@@ -72,4 +72,4 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm exec vsce package
           pnpm exec vsce publish --pat "$VSCE_PAT"
-          pnpm dlx ovsx publish *.vsix --pat "$OVSX_PAT"
+          pnpm dlx ovsx publish ./*.vsix --pat "$OVSX_PAT"

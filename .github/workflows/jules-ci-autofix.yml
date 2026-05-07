@@ -79,8 +79,6 @@ jobs:
           HEAD_SHA="$(jq -r '.head_sha // ""' .jules-ci/run.json)"
           HEAD_REPO="$(jq -r '.head_repository.full_name // ""' .jules-ci/run.json)"
           RUN_URL="$(jq -r '.html_url // ""' .jules-ci/run.json)"
-          RUN_EVENT="$(jq -r '.event // ""' .jules-ci/run.json)"
-          DISPLAY_TITLE="$(jq -r '.display_title // ""' .jules-ci/run.json)"
 
           if [[ "${CONCLUSION}" != "failure" && "${CONCLUSION}" != "timed_out" ]]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
