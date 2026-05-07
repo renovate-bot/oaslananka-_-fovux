@@ -5,12 +5,14 @@
       "release-type": "python",
       "package-name": "fovux-mcp",
       "changelog-path": "fovux-mcp/CHANGELOG.md",
+      "include-component-in-tag": false,
       "bump-patch-for-minor-pre-major": true
     },
     "fovux-studio": {
       "release-type": "node",
       "package-name": "fovux-studio",
       "changelog-path": "fovux-studio/CHANGELOG.md",
+      "include-component-in-tag": false,
       "bump-patch-for-minor-pre-major": true
     }
   },
