@@ -1,21 +1,42 @@
-name: PR size labeler
+name: PR Size Labeler
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   pull-requests: write
   issues: write
 
 jobs:
-  size:
-    if: github.repository == 'oaslananka-lab/fovux'
+  label-size:
+    if: >
+      github.repository == 'oaslananka-lab/fovux' &&
+      github.event.pull_request.draft == false
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - uses: pascalgn/size-label-action@f8edde36b3be04b4f65dcfead05dc8691b374348
+      - name: Label by changed line count
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          sizes: >
-            {"0":"effort:xs","30":"effort:s","100":"effort:m","500":"effort:l","1000":"effort:xl"}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          changed="$(
+            gh pr view "$PR_NUMBER" \
+              --json additions,deletions \
+              --jq '.additions + .deletions'
+          )"
+
+          if [ "$changed" -le 10 ]; then label="size/XS";
+          elif [ "$changed" -le 50 ]; then label="size/S";
+          elif [ "$changed" -le 250 ]; then label="size/M";
+          elif [ "$changed" -le 500 ]; then label="size/L";
+          else label="size/XL"; fi
+
+          for old in "size/XS" "size/S" "size/M" "size/L" "size/XL"; do
+            gh pr edit "$PR_NUMBER" --remove-label "$old" >/dev/null 2>&1 || true
+          done
+
+          gh pr edit "$PR_NUMBER" --add-label "$label"

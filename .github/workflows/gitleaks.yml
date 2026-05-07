@@ -2,8 +2,9 @@ name: Gitleaks
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
-    branches: ["**"]
+    branches: [main]
   schedule:
     - cron: "0 6 * * 1"
 
@@ -13,7 +14,12 @@ permissions:
 
 jobs:
   scan:
-    if: github.repository == 'oaslananka-lab/fovux'
+    if: >
+      github.repository == 'oaslananka-lab/fovux' &&
+      (
+        github.event_name != 'pull_request' ||
+        github.event.pull_request.draft == false
+      )
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -24,6 +30,6 @@ jobs:
           go-version: stable
           cache: false
       - name: Install Gitleaks
-        run: go install github.com/zricethezav/gitleaks/v8@latest
+        run: go install github.com/gitleaks/gitleaks/v8@v8.30.1
       - name: Gitleaks scan
         run: gitleaks detect --no-banner --redact

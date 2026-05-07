@@ -2,19 +2,26 @@ name: Lint (fast)
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
-    branches: ["**"]
+    branches: [main]
+  merge_group:
 
 permissions:
   contents: read
 
 concurrency:
-  group: lint-fast-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   meta:
-    if: github.repository == 'oaslananka-lab/fovux'
+    if: >
+      github.repository == 'oaslananka-lab/fovux' &&
+      (
+        github.event_name != 'pull_request' ||
+        github.event.pull_request.draft == false
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -29,7 +36,12 @@ jobs:
           yamllint -d "{extends: relaxed, rules: {line-length: disable}}" .github/
 
   python:
-    if: github.repository == 'oaslananka-lab/fovux'
+    if: >
+      github.repository == 'oaslananka-lab/fovux' &&
+      (
+        github.event_name != 'pull_request' ||
+        github.event.pull_request.draft == false
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -41,7 +53,12 @@ jobs:
       - run: uvx ruff format --check fovux-mcp
 
   node:
-    if: github.repository == 'oaslananka-lab/fovux'
+    if: >
+      github.repository == 'oaslananka-lab/fovux' &&
+      (
+        github.event_name != 'pull_request' ||
+        github.event.pull_request.draft == false
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

@@ -1,18 +1,33 @@
+fovux-mcp:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "fovux-mcp/**"
+
 area:mcp:
   - changed-files:
       - any-glob-to-any-file:
           - "fovux-mcp/**"
+
+fovux-studio:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "fovux-studio/**"
 
 area:studio:
   - changed-files:
       - any-glob-to-any-file:
           - "fovux-studio/**"
 
-area:docs:
+ci:
   - changed-files:
       - any-glob-to-any-file:
-          - "docs/**"
-          - "**/*.md"
+          - ".github/**"
+          - "azure-pipelines.yml"
+          - ".gitlab-ci.yml"
+          - "Taskfile.yml"
+          - ".pre-commit-config.yaml"
+          - "pipelines/**"
+          - "scripts/**"
 
 area:ci:
   - changed-files:
@@ -20,8 +35,36 @@ area:ci:
           - ".github/**"
           - "azure-pipelines.yml"
           - ".gitlab-ci.yml"
+          - "Taskfile.yml"
+          - ".pre-commit-config.yaml"
           - "pipelines/**"
           - "scripts/**"
+
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "docs/**"
+          - "**/*.md"
+          - "CHANGELOG.md"
+          - "CONTRIBUTING.md"
+          - "README.md"
+
+area:docs:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "docs/**"
+          - "**/*.md"
+
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/pyproject.toml"
+          - "**/requirements*.txt"
+          - "**/package.json"
+          - "**/package-lock.json"
+          - "**/pnpm-lock.yaml"
+          - ".github/dependabot.yml"
+          - "renovate.json5"
 
 area:dataset:
   - changed-files:

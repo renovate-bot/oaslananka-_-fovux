@@ -1,36 +1,72 @@
 version: 2
 updates:
+  - package-ecosystem: pip
+    directory: /fovux-mcp
+    schedule:
+      interval: weekly
+      day: monday
+      time: "08:00"
+      timezone: Europe/Istanbul
+    open-pull-requests-limit: 8
+    labels:
+      - dependencies
+      - python
+      - fovux-mcp
+      - area:mcp
+    commit-message:
+      prefix: "chore(deps/mcp)"
+    groups:
+      python-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: npm
+    directory: /fovux-studio
+    schedule:
+      interval: weekly
+      day: monday
+      time: "08:00"
+      timezone: Europe/Istanbul
+    open-pull-requests-limit: 8
+    labels:
+      - dependencies
+      - typescript
+      - fovux-studio
+      - area:studio
+    commit-message:
+      prefix: "chore(deps/studio)"
+    groups:
+      npm-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
-      day: monday
-      time: "06:00"
+      day: tuesday
+      time: "08:00"
+      timezone: Europe/Istanbul
     open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - ci
+      - area:ci
+    commit-message:
+      prefix: "chore(ci)"
     groups:
-      actions:
-        patterns: ["*"]
-        update-types: [minor, patch]
-    cooldown:
-      default-days: 3
-    labels: [dependencies, type:chore]
-
-  - package-ecosystem: pip
-    directory: /fovux-mcp
-    schedule: { interval: weekly, day: monday }
-    open-pull-requests-limit: 10
-    groups:
-      python-minor-patch:
-        patterns: ["*"]
-        update-types: [minor, patch]
-    labels: [dependencies, area:python]
-
-  - package-ecosystem: npm
-    directory: /fovux-studio
-    schedule: { interval: weekly, day: monday }
-    open-pull-requests-limit: 10
-    groups:
-      js-minor-patch:
-        patterns: ["*"]
-        update-types: [minor, patch]
-    labels: [dependencies, area:js]
+      gha-all:
+        patterns:
+          - "*"

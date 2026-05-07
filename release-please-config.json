@@ -1,0 +1,19 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "packages": {
+    "fovux-mcp": {
+      "release-type": "python",
+      "package-name": "fovux-mcp",
+      "changelog-path": "fovux-mcp/CHANGELOG.md",
+      "bump-patch-for-minor-pre-major": true
+    },
+    "fovux-studio": {
+      "release-type": "node",
+      "package-name": "fovux-studio",
+      "changelog-path": "fovux-studio/CHANGELOG.md",
+      "bump-patch-for-minor-pre-major": true
+    }
+  },
+  "separate-pull-requests": true,
+  "pull-request-title-pattern": "chore${scope}: release${component} ${version}"
+}

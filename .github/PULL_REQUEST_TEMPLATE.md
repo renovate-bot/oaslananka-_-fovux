@@ -1,30 +1,32 @@
 ## Summary
 
-<!-- What changed and why -->
+<!-- What does this PR do? Link the issue: Closes #XXX -->
 
-## Linked issue
+## Type Of Change
 
-Closes #
+- [ ] Bug fix (non-breaking)
+- [ ] Feature (non-breaking)
+- [ ] Breaking change
+- [ ] Docs / comments only
+- [ ] Chore / refactor / dependencies
 
-## Type of change
+## Component
 
-- [ ] type:bug
-- [ ] type:feature
-- [ ] type:docs
-- [ ] type:refactor
-- [ ] type:perf
-- [ ] type:security
-- [ ] type:chore
-- [ ] breaking
-
-## Test evidence
-
-<!-- Commands run + brief result -->
+- [ ] `fovux-mcp` (Python MCP server)
+- [ ] `fovux-studio` (VS Code extension)
+- [ ] Root / CI / docs
 
 ## Checklist
 
-- [ ] Tests pass locally
-- [ ] Lint and typecheck pass
-- [ ] CHANGELOG entry (if user-visible)
-- [ ] Docs updated (if user-visible)
+- [ ] `task lint` passes locally
+- [ ] `task typecheck` passes locally
+- [ ] `task test:fast` passes locally
+- [ ] New tests added for new logic
+- [ ] Docs updated if public API changed
+- [ ] CHANGELOG.md updated if user-facing behavior changed
+- [ ] Draft PR opened first, then converted to ready for review
 - [ ] No new committed secrets or build artifacts
+
+## Review Thread Resolution
+
+All review comments must be resolved before merge.

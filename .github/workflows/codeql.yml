@@ -1,12 +1,17 @@
-name: CodeQL
+name: CodeQL SAST
 
 on:
   push:
-    branches: ["main"]
+    branches: [main]
   pull_request:
-    branches: ["main"]
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
   schedule:
-    - cron: "37 11 * * 3"
+    - cron: "0 3 * * 3"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   actions: read
@@ -15,22 +20,35 @@ permissions:
 
 jobs:
   analyze:
-    if: github.repository == 'oaslananka-lab/fovux'
-    name: Analyze
+    if: >
+      github.repository == 'oaslananka-lab/fovux' &&
+      (
+        github.event_name != 'pull_request' ||
+        github.event.pull_request.draft == false
+      )
+    name: CodeQL (${{ matrix.language }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        language: ["python", "javascript-typescript"]
+        include:
+          - language: python
+            build-mode: none
+          - language: javascript-typescript
+            build-mode: none
+
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@95e58e9a2cdfd71adc6e0353d5c52f41a045d225
         with:
           languages: ${{ matrix.language }}
-      - name: Perform CodeQL Analysis
+          build-mode: ${{ matrix.build-mode }}
+
+      - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@95e58e9a2cdfd71adc6e0353d5c52f41a045d225
         with:
-          category: "/language:${{matrix.language}}"
+          category: /language:${{ matrix.language }}

@@ -2,13 +2,16 @@ name: Commitlint
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
 
 jobs:
   lint:
-    if: github.repository == 'oaslananka-lab/fovux'
+    if: >
+      github.repository == 'oaslananka-lab/fovux' &&
+      github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
