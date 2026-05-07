@@ -28,9 +28,14 @@ check_remote_file() {
 
 check_clean_github_queue() {
   local repo=$1
-  local open_prs open_issues extra_branches
+  local open_prs open_issues extra_branches issues_enabled
   open_prs="$(gh pr list --repo "$repo" --state open --limit 100 --json number --jq 'length')"
-  open_issues="$(gh issue list --repo "$repo" --state open --limit 100 --json number --jq 'length')"
+  issues_enabled="$(gh repo view "$repo" --json hasIssuesEnabled --jq '.hasIssuesEnabled')"
+  if [ "$issues_enabled" = "true" ]; then
+    open_issues="$(gh issue list --repo "$repo" --state open --limit 100 --json number --jq 'length')"
+  else
+    open_issues="0"
+  fi
   extra_branches="$(gh api "repos/$repo/branches" --paginate --jq '.[].name' | grep -vc '^main$' || true)"
 
   if [ "$open_prs" = "0" ] && [ "$open_issues" = "0" ] && [ "$extra_branches" = "0" ]; then
