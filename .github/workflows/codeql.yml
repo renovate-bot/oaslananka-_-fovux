@@ -34,21 +34,74 @@ jobs:
       matrix:
         include:
           - language: python
-            build-mode: none
           - language: javascript-typescript
-            build-mode: none
 
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@95e58e9a2cdfd71adc6e0353d5c52f41a045d225
-        with:
-          languages: ${{ matrix.language }}
-          build-mode: ${{ matrix.build-mode }}
+      - name: Install CodeQL CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="2.25.3"
+          bundle="$RUNNER_TEMP/codeql-bundle.tar.zst"
+          install_dir="$RUNNER_TEMP/codeql-bundle"
+          curl -fsSL --retry 3 -o "$bundle" \
+            "https://github.com/github/codeql-action/releases/download/codeql-bundle-v${version}/codeql-bundle-linux64.tar.zst"
+          mkdir -p "$install_dir"
+          tar --zstd -xf "$bundle" -C "$install_dir"
+          "$install_dir/codeql/codeql" version --format=json > "$RUNNER_TEMP/codeql-version.json"
+          echo "$install_dir/codeql" >> "$GITHUB_PATH"
 
-      - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@95e58e9a2cdfd71adc6e0353d5c52f41a045d225
-        with:
-          category: /language:${{ matrix.language }}
+      - name: Create CodeQL database
+        shell: bash
+        run: |
+          set -euo pipefail
+          db="$RUNNER_TEMP/codeql-db/${{ matrix.language }}"
+          log="$RUNNER_TEMP/codeql-create-${{ matrix.language }}.log"
+          mkdir -p "$(dirname "$db")"
+          if ! codeql database create "$db" \
+            --language="${{ matrix.language }}" \
+            --source-root=. \
+            --build-mode=none \
+            --threads=0 \
+            --ram=4096 \
+            --overwrite >"$log" 2>&1; then
+            tail -n 120 "$log"
+            exit 1
+          fi
+
+      - name: Analyze CodeQL database
+        shell: bash
+        run: |
+          set -euo pipefail
+          db="$RUNNER_TEMP/codeql-db/${{ matrix.language }}"
+          sarif="$RUNNER_TEMP/codeql-${{ matrix.language }}.sarif"
+          log="$RUNNER_TEMP/codeql-analyze-${{ matrix.language }}.log"
+          if ! codeql database analyze "$db" \
+            --format=sarifv2.1.0 \
+            --output="$sarif" \
+            --sarif-category="/language:${{ matrix.language }}" \
+            --threads=0 \
+            --ram=4096 >"$log" 2>&1; then
+            tail -n 120 "$log"
+            exit 1
+          fi
+
+      - name: Upload CodeQL SARIF
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          sarif="$RUNNER_TEMP/codeql-${{ matrix.language }}.sarif"
+          log="$RUNNER_TEMP/codeql-upload-${{ matrix.language }}.log"
+          if ! codeql github upload-results \
+            --repository="$GITHUB_REPOSITORY" \
+            --ref="$GITHUB_REF" \
+            --commit="$GITHUB_SHA" \
+            --sarif="$sarif" >"$log" 2>&1; then
+            tail -n 120 "$log"
+            exit 1
+          fi

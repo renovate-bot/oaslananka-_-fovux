@@ -70,6 +70,6 @@ jobs:
         run: |
           npm install --global pnpm@10.33.0
           pnpm install --frozen-lockfile
-          pnpm exec vsce package
-          pnpm exec vsce publish --pat "$VSCE_PAT"
-          pnpm dlx ovsx publish ./*.vsix --pat "$OVSX_PAT"
+          npx --yes @vscode/vsce@3.9.1 package
+          npx --yes @vscode/vsce@3.9.1 publish --pat "$VSCE_PAT"
+          npx --yes ovsx@0.10.11 publish ./*.vsix --pat "$OVSX_PAT"
