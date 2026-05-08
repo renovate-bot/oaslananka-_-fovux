@@ -3,10 +3,13 @@ name: Release Please
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -18,9 +21,13 @@ defaults:
 
 jobs:
   release-please:
-    if: github.repository == 'oaslananka-lab/fovux'
+    if: github.repository == 'oaslananka-lab/fovux' && github.event_name == 'push'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: write
     outputs:
       mcp_release_created: ${{ steps.rp.outputs['fovux-mcp--release_created'] }}
       mcp_tag_name: ${{ steps.rp.outputs['fovux-mcp--tag_name'] }}
@@ -36,6 +43,51 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Dispatch release pull request checks
+        if: steps.rp.outputs.prs_created == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_PULL_REQUESTS: ${{ steps.rp.outputs.prs }}
+        run: |
+          set -euo pipefail
+          branches="$(
+            {
+              jq -r '.[] | .headBranchName // .headRefName // .head_branch // empty' <<<"$RELEASE_PULL_REQUESTS"
+              gh pr list --state open --json headRefName \
+                --jq '.[] | select(.headRefName | startswith("release-please--branches--")) | .headRefName'
+            } | sort -u
+          )"
+
+          if [[ -z "$branches" ]]; then
+            echo "No release pull request branches found."
+            exit 0
+          fi
+
+          while IFS= read -r branch; do
+            [[ -z "$branch" ]] && continue
+            for workflow in ci.yml security.yml codeql.yml scorecard.yml release-please.yml; do
+              gh workflow run "$workflow" --ref "$branch"
+            done
+          done <<<"$branches"
+
+  release-please-check:
+    name: release-please
+    if: >
+      github.repository == 'oaslananka-lab/fovux' &&
+      github.event_name != 'push' &&
+      (
+        github.event_name != 'pull_request' ||
+        github.event.pull_request.draft == false
+      )
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - name: Validate release automation
+        run: |
+          set -euo pipefail
+          node scripts/validate_release_automation.mjs
 
   publish-mcp:
     needs: release-please

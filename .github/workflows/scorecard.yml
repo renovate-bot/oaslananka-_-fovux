@@ -2,6 +2,9 @@ name: Scorecard supply-chain security
 on:
   branch_protection_rule:
   workflow_dispatch:
+  pull_request:
+    branches: ["main"]
+    types: [opened, synchronize, reopened, ready_for_review]
   schedule:
     - cron: "20 7 * * 2"
   push:
@@ -20,7 +23,12 @@ defaults:
 
 jobs:
   analysis:
-    if: github.repository == 'oaslananka-lab/fovux' && github.ref == 'refs/heads/main'
+    if: >
+      github.repository == 'oaslananka-lab/fovux' &&
+      (
+        github.event_name != 'pull_request' ||
+        github.event.pull_request.draft == false
+      )
     name: Scorecard analysis
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -73,7 +81,7 @@ jobs:
   scorecard-required:
     name: scorecard-required
     needs: analysis
-    if: github.repository == 'oaslananka-lab/fovux' && github.ref == 'refs/heads/main'
+    if: github.repository == 'oaslananka-lab/fovux'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
