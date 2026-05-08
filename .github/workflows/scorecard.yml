@@ -53,6 +53,7 @@ jobs:
           set -euo pipefail
           scorecard \
             --repo=github.com/oaslananka-lab/fovux \
+            --checks=Binary-Artifacts,Branch-Protection,Dangerous-Workflow,Dependency-Update-Tool,License,Pinned-Dependencies,SAST,Security-Policy,Token-Permissions,Vulnerabilities \
             --format=json \
             --show-details \
             --output results.json
