@@ -94,7 +94,6 @@ for (const requiredPath of [
   "src/fovux/__init__.py",
   "server.json",
   "smithery.yaml",
-  "../mcp.json",
 ]) {
   if (
     !mcpExtraFiles.some(
@@ -103,6 +102,18 @@ for (const requiredPath of [
     )
   ) {
     fail(`fovux-mcp extra-files must update ${requiredPath}`);
+  }
+}
+
+if (!workflowNames.includes("release-please.yml")) {
+  fail("release-please workflow is required");
+} else {
+  const releaseWorkflow = await readFile(
+    join(workflowsPath, "release-please.yml"),
+    "utf8",
+  );
+  if (!releaseWorkflow.includes("python3 scripts/sync_mcp_metadata.py")) {
+    fail("release pull request metadata sync must update root MCP metadata");
   }
 }
 

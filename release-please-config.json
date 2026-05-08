@@ -27,16 +27,6 @@
           "type": "yaml",
           "path": "smithery.yaml",
           "jsonpath": "$.version"
-        },
-        {
-          "type": "json",
-          "path": "../mcp.json",
-          "jsonpath": "$.version"
-        },
-        {
-          "type": "json",
-          "path": "../mcp.json",
-          "jsonpath": "$.packages[0].version"
         }
       ]
     },

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 import re
-import sys
 from pathlib import Path
 
 
@@ -46,6 +45,25 @@ def _sync_server_json(mcp_root: Path, version: str) -> bool:
     return changed
 
 
+def _sync_root_mcp_json(root: Path, version: str) -> bool:
+    path = root / "mcp.json"
+    if not path.exists():
+        return False
+    data = json.loads(path.read_text(encoding="utf-8"))
+    changed = False
+    if data.get("version") != version:
+        data["version"] = version
+        changed = True
+    for pkg in data.get("packages", []):
+        if pkg.get("version") != version:
+            pkg["version"] = version
+            changed = True
+    if changed:
+        path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        print(f"Updated mcp.json to {version}")
+    return changed
+
+
 def _sync_smithery_yaml(mcp_root: Path, version: str) -> bool:
     path = mcp_root / "smithery.yaml"
     if not path.exists():
@@ -65,12 +83,14 @@ def _sync_smithery_yaml(mcp_root: Path, version: str) -> bool:
 
 
 def main() -> int:
+    """Synchronize release metadata files and return a process status code."""
     root = _repo_root()
     version = _read_pyproject_version(root)
     mcp_root = root / "fovux-mcp"
     s1 = _sync_server_json(mcp_root, version)
     s2 = _sync_smithery_yaml(mcp_root, version)
-    if not s1 and not s2:
+    s3 = _sync_root_mcp_json(root, version)
+    if not s1 and not s2 and not s3:
         print(f"MCP metadata already at {version}. No changes.")
     return 0
 
