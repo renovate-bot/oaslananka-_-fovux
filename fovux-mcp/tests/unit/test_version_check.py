@@ -33,6 +33,9 @@ def test_check_versions_detects_mismatch(tmp_path: Path) -> None:
     (tmp_path / "fovux-mcp" / "pyproject.toml").write_text(
         '[project]\nname = "fovux-mcp"\nversion = "4.1.0"\n'
     )
+    (tmp_path / "fovux-mcp" / "uv.lock").write_text(
+        '[[package]]\nname = "fovux-mcp"\nversion = "4.1.0"\n'
+    )
     (mcp_dir / "__init__.py").write_text('__version__ = "4.0.0"\n')
 
     studio_dir = tmp_path / "fovux-studio"

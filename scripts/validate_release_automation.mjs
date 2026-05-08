@@ -115,6 +115,9 @@ if (!workflowNames.includes("release-please.yml")) {
   if (!releaseWorkflow.includes("python3 scripts/sync_mcp_metadata.py")) {
     fail("release pull request metadata sync must update root MCP metadata");
   }
+  if (!releaseWorkflow.includes("fovux-mcp/uv.lock")) {
+    fail("release pull request metadata sync must update uv.lock");
+  }
 }
 
 const forbiddenReleaseInputs = [

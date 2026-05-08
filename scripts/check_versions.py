@@ -88,12 +88,28 @@ def _read_smithery_version(root: Path) -> str:
     return match.group(1)
 
 
+def _read_uv_lock_version(root: Path) -> str:
+    """Extract the editable fovux-mcp package version from uv.lock."""
+    lockfile = root / "fovux-mcp" / "uv.lock"
+    if not lockfile.exists():
+        return "<uv.lock not found>"
+    content = lockfile.read_text(encoding="utf-8")
+    match = re.search(
+        r'(?m)^\[\[package\]\]\nname = "fovux-mcp"\nversion = "([^"]+)"',
+        content,
+    )
+    if not match:
+        return "<fovux-mcp version not found in uv.lock>"
+    return match.group(1)
+
+
 def check_versions() -> int:
     """Check all version sources and return 0 if coherent, 1 otherwise."""
     root = _repo_root()
 
     sources: dict[str, str] = {
         "fovux-mcp/pyproject.toml": _read_pyproject_version(root),
+        "fovux-mcp/uv.lock": _read_uv_lock_version(root),
         "fovux-mcp/src/fovux/__init__.py": _read_init_version(root),
         "fovux-mcp/server.json": _read_jsonpath_version(
             root / "fovux-mcp" / "server.json", "version"
