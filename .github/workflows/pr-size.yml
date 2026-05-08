@@ -33,6 +33,7 @@ jobs:
 
           changed="$(
             gh pr view "$PR_NUMBER" \
+              --repo "$GITHUB_REPOSITORY" \
               --json additions,deletions \
               --jq '.additions + .deletions'
           )"
@@ -43,11 +44,16 @@ jobs:
           elif [ "$changed" -le 500 ]; then label="size/L";
           else label="size/XL"; fi
 
-          current_labels="$(gh pr view "$PR_NUMBER" --json labels --jq '.labels[].name')"
+          current_labels="$(
+            gh pr view "$PR_NUMBER" \
+              --repo "$GITHUB_REPOSITORY" \
+              --json labels \
+              --jq '.labels[].name'
+          )"
           for old in "size/XS" "size/S" "size/M" "size/L" "size/XL"; do
             if printf '%s\n' "$current_labels" | grep -Fxq "$old"; then
-              gh pr edit "$PR_NUMBER" --remove-label "$old"
+              gh pr edit "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --remove-label "$old"
             fi
           done
 
-          gh pr edit "$PR_NUMBER" --add-label "$label"
+          gh pr edit "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --add-label "$label"
