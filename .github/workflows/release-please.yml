@@ -77,10 +77,10 @@ jobs:
       - name: Attach Python release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ needs.release-please.outputs.mcp_tag_name }}
+          RELEASE_TAG: ${{ needs.release-please.outputs.mcp_tag_name }}
         run: |
           set -euo pipefail
-          gh release upload "$TAG_NAME" \
+          gh release upload "$RELEASE_TAG" \
             fovux-mcp/dist/* \
             fovux-mcp-sbom.spdx.json \
             fovux-mcp.sha256
@@ -93,12 +93,12 @@ jobs:
 
       - name: Verify Python release
         env:
-          TAG_NAME: ${{ needs.release-please.outputs.mcp_tag_name }}
-          VERSION: ${{ needs.release-please.outputs.mcp_version }}
+          RELEASE_TAG: ${{ needs.release-please.outputs.mcp_tag_name }}
+          PACKAGE_VERSION: ${{ needs.release-please.outputs.mcp_version }}
         run: |
           set -euo pipefail
-          gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null
-          test -n "$VERSION"
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
+          test -n "$PACKAGE_VERSION"
 
   publish-studio:
     needs: release-please
@@ -146,10 +146,10 @@ jobs:
       - name: Attach Studio release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ needs.release-please.outputs.studio_tag_name }}
+          RELEASE_TAG: ${{ needs.release-please.outputs.studio_tag_name }}
         run: |
           set -euo pipefail
-          gh release upload "$TAG_NAME" \
+          gh release upload "$RELEASE_TAG" \
             fovux-studio/fovux-studio.vsix \
             fovux-studio-sbom.spdx.json \
             fovux-studio.sha256
@@ -166,9 +166,9 @@ jobs:
 
       - name: Verify Studio release
         env:
-          TAG_NAME: ${{ needs.release-please.outputs.studio_tag_name }}
-          VERSION: ${{ needs.release-please.outputs.studio_version }}
+          RELEASE_TAG: ${{ needs.release-please.outputs.studio_tag_name }}
+          PACKAGE_VERSION: ${{ needs.release-please.outputs.studio_version }}
         run: |
           set -euo pipefail
-          gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null
-          test -n "$VERSION"
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
+          test -n "$PACKAGE_VERSION"
