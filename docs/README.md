@@ -19,7 +19,7 @@ The v2.0.0 hardening train is designed to keep source, local checks, and CI alig
 - `oaslananka/fovux` is the canonical public source repository.
 - `oaslananka-lab/fovux` is the CI/CD repository that runs automatic GitHub Actions checks on push and
   pull request.
-- Azure DevOps and GitLab remain manual mirror paths.
+- Azure DevOps remains a non-authoritative fallback path.
 - Registry publishing is driven by release-please outputs and protected GitHub environments.
 
 Before a release, run the repo-level quality gate:

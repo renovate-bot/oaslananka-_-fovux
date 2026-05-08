@@ -39,10 +39,13 @@ def test_check_versions_detects_mismatch(tmp_path: Path) -> None:
     studio_dir.mkdir()
     (studio_dir / "package.json").write_text('{"version": "4.1.0"}\n')
 
-    (tmp_path / "CHANGELOG.md").write_text("# Changelog\n\n## [4.1.0] - 2026-04-27\n")
+    (tmp_path / "fovux-mcp" / "server.json").write_text(
+        '{"version": "4.1.0", "packages": [{"version": "4.1.0"}]}\n'
+    )
+    (tmp_path / "fovux-mcp" / "smithery.yaml").write_text('version: "4.1.0"\n')
+    (tmp_path / "mcp.json").write_text('{"version": "4.1.0", "packages": [{"version": "4.1.0"}]}\n')
     (tmp_path / "fovux-mcp" / "CHANGELOG.md").write_text("# Changelog\n\n## [4.1.0] - 2026-04-27\n")
     (studio_dir / "CHANGELOG.md").write_text("# Changelog\n\n## [4.1.0] - 2026-04-27\n")
-    (tmp_path / "RELEASE_NOTES.md").write_text("# Fovux 4.1.0 Release Notes\n")
 
     # Copy the script and adjust its root detection
     script_content = CHECK_VERSIONS.read_text(encoding="utf-8")

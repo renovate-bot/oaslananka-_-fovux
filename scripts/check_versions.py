@@ -1,23 +1,9 @@
-"""Check version coherence across the Fovux monorepo.
-
-Reads all sources of truth for the package version and asserts they
-match.  Exits non-zero with a clear diff on mismatch.
-
-Sources:
-  1. fovux-mcp/pyproject.toml            [project].version
-  2. fovux-mcp/src/fovux/__init__.py      __version__
-  3. fovux-studio/package.json            version
-  4. CHANGELOG.md (root)                  top version header
-  5. fovux-mcp/CHANGELOG.md               top version header
-  6. fovux-studio/CHANGELOG.md            top version header
-  7. RELEASE_NOTES.md                     headline version
-"""
+"""Check release-controlled version coherence across the Fovux monorepo."""
 
 from __future__ import annotations
 
 import json
 import re
-import sys
 from pathlib import Path
 
 
@@ -53,6 +39,24 @@ def _read_package_json_version(root: Path) -> str:
     return str(data.get("version", "<not found in package.json>"))
 
 
+def _read_jsonpath_version(path: Path, *keys: str | int) -> str:
+    """Extract a nested version value from a JSON metadata file."""
+    if not path.exists():
+        return f"<{path.name} not found>"
+    value: object = json.loads(path.read_text(encoding="utf-8"))
+    for key in keys:
+        try:
+            if isinstance(key, int) and isinstance(value, list):
+                value = value[key]
+            elif isinstance(key, str) and isinstance(value, dict):
+                value = value[key]
+            else:
+                return f"<missing {'.'.join(map(str, keys))} in {path.name}>"
+        except (IndexError, KeyError):
+            return f"<missing {'.'.join(map(str, keys))} in {path.name}>"
+    return str(value)
+
+
 def _read_changelog_top_version(changelog_path: Path) -> str:
     """Extract the version from the topmost ## [x.y.z] header."""
     if not changelog_path.exists():
@@ -72,15 +76,15 @@ def _read_changelog_top_version(changelog_path: Path) -> str:
     return version
 
 
-def _read_release_notes_version(root: Path) -> str:
-    """Extract version from RELEASE_NOTES.md headline."""
-    rn = root / "RELEASE_NOTES.md"
-    if not rn.exists():
-        return "<RELEASE_NOTES.md not found>"
-    content = rn.read_text(encoding="utf-8")
-    match = re.search(r"^#\s+Fovux\s+(\S+)", content, re.MULTILINE)
+def _read_smithery_version(root: Path) -> str:
+    """Extract version from fovux-mcp/smithery.yaml."""
+    smithery = root / "fovux-mcp" / "smithery.yaml"
+    if not smithery.exists():
+        return "<smithery.yaml not found>"
+    content = smithery.read_text(encoding="utf-8")
+    match = re.search(r'^version:\s*"?([^"\s]+)"?', content, re.MULTILINE)
     if not match:
-        return "<no version in RELEASE_NOTES.md>"
+        return "<no version in smithery.yaml>"
     return match.group(1)
 
 
@@ -91,15 +95,20 @@ def check_versions() -> int:
     sources: dict[str, str] = {
         "fovux-mcp/pyproject.toml": _read_pyproject_version(root),
         "fovux-mcp/src/fovux/__init__.py": _read_init_version(root),
-        "fovux-studio/package.json": _read_package_json_version(root),
-        "CHANGELOG.md (root)": _read_changelog_top_version(root / "CHANGELOG.md"),
-        "fovux-mcp/CHANGELOG.md": _read_changelog_top_version(
-            root / "fovux-mcp" / "CHANGELOG.md"
+        "fovux-mcp/server.json": _read_jsonpath_version(
+            root / "fovux-mcp" / "server.json", "version"
         ),
+        "fovux-mcp/server.json packages[0]": _read_jsonpath_version(
+            root / "fovux-mcp" / "server.json", "packages", 0, "version"
+        ),
+        "fovux-mcp/smithery.yaml": _read_smithery_version(root),
+        "mcp.json": _read_jsonpath_version(root / "mcp.json", "version"),
+        "mcp.json packages[0]": _read_jsonpath_version(root / "mcp.json", "packages", 0, "version"),
+        "fovux-studio/package.json": _read_package_json_version(root),
+        "fovux-mcp/CHANGELOG.md": _read_changelog_top_version(root / "fovux-mcp" / "CHANGELOG.md"),
         "fovux-studio/CHANGELOG.md": _read_changelog_top_version(
             root / "fovux-studio" / "CHANGELOG.md"
         ),
-        "RELEASE_NOTES.md": _read_release_notes_version(root),
     }
 
     unique_versions = set(sources.values())
@@ -113,7 +122,8 @@ def check_versions() -> int:
     print()
     max_label = max(len(label) for label in sources)
     for label, version in sources.items():
-        marker = "  " if version == max(unique_versions, key=lambda v: list(sources.values()).count(v)) else "!!"
+        most_common = max(unique_versions, key=lambda v: list(sources.values()).count(v))
+        marker = "  " if version == most_common else "!!"
         print(f"  {marker} {label:<{max_label}}  {version}")
     print()
     print(f"Found {len(unique_versions)} distinct versions: {sorted(unique_versions)}")

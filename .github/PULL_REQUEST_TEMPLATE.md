@@ -1,6 +1,6 @@
 ## Summary
 
-<!-- What does this PR do? Link the issue: Closes #XXX -->
+<!-- What does this PR do? Link related issues when applicable. -->
 
 ## Type Of Change
 
@@ -23,7 +23,7 @@
 - [ ] `task test:fast` passes locally
 - [ ] New tests added for new logic
 - [ ] Docs updated if public API changed
-- [ ] CHANGELOG.md updated if user-facing behavior changed
+- [ ] Conventional Commit message will let release-please update changelogs
 - [ ] Draft PR opened first, then converted to ready for review
 - [ ] No new committed secrets or build artifacts
 

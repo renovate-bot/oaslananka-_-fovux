@@ -30,15 +30,17 @@ const workflowNames = await readdir(workflowsDir);
 const expectedPackages = {
   "fovux-mcp": {
     releaseType: "python",
+    component: "fovux-mcp",
     packageName: pyprojectValue(mcpPyproject, "name"),
     version: pyprojectValue(mcpPyproject, "version"),
-    changelog: "fovux-mcp/CHANGELOG.md",
+    changelog: "CHANGELOG.md",
   },
   "fovux-studio": {
     releaseType: "node",
+    component: "fovux-studio",
     packageName: studioPackage.name,
     version: studioPackage.version,
-    changelog: "fovux-studio/CHANGELOG.md",
+    changelog: "CHANGELOG.md",
   },
 };
 
@@ -50,6 +52,9 @@ for (const [path, expected] of Object.entries(expectedPackages)) {
   }
   if (actual["release-type"] !== expected.releaseType) {
     fail(`${path} release-type must be ${expected.releaseType}`);
+  }
+  if (actual.component !== expected.component) {
+    fail(`${path} component must be ${expected.component}`);
   }
   if (actual["package-name"] !== expected.packageName) {
     fail(`${path} package-name must match package metadata`);
@@ -65,6 +70,42 @@ for (const [path, expected] of Object.entries(expectedPackages)) {
   }
 }
 
+if (config["separate-pull-requests"] !== false) {
+  fail("release-please must create one grouped release pull request");
+}
+
+const linkedVersions = config.plugins?.find(
+  (plugin) => plugin.type === "linked-versions",
+);
+if (!linkedVersions) {
+  fail("release-please linked-versions plugin is required");
+} else {
+  const expectedComponents = Object.keys(expectedPackages).sort();
+  const actualComponents = [...(linkedVersions.components ?? [])].sort();
+  if (JSON.stringify(actualComponents) !== JSON.stringify(expectedComponents)) {
+    fail(
+      "release-please linked-versions components must match configured packages",
+    );
+  }
+}
+
+const mcpExtraFiles = config.packages?.["fovux-mcp"]?.["extra-files"] ?? [];
+for (const requiredPath of [
+  "src/fovux/__init__.py",
+  "server.json",
+  "smithery.yaml",
+  "../mcp.json",
+]) {
+  if (
+    !mcpExtraFiles.some(
+      (entry) =>
+        (typeof entry === "string" ? entry : entry.path) === requiredPath,
+    )
+  ) {
+    fail(`fovux-mcp extra-files must update ${requiredPath}`);
+  }
+}
+
 const forbiddenReleaseInputs = [
   ["RELEASE", "VERSION"].join("_"),
   ["INPUT", "VERSION"].join("_"),
@@ -75,7 +116,9 @@ const forbiddenReleaseInputs = [
   ["workflow_dispatch", "inputs", ["release", "version"].join("_")].join("."),
 ];
 
-for (const name of workflowNames.filter((item) => item.endsWith(".yml") || item.endsWith(".yaml"))) {
+for (const name of workflowNames.filter(
+  (item) => item.endsWith(".yml") || item.endsWith(".yaml"),
+)) {
   const text = await readFile(join(workflowsPath, name), "utf8");
   for (const forbidden of forbiddenReleaseInputs) {
     if (text.includes(forbidden)) {
@@ -88,4 +131,6 @@ if (process.exitCode) {
   process.exit(process.exitCode);
 }
 
-console.log("Release automation config is manifest-driven and version-input free.");
+console.log(
+  "Release automation config is manifest-driven and version-input free.",
+);

@@ -150,7 +150,16 @@ def mcp_audit() -> None:
     """Export runtime requirements from the lockfile and audit them."""
     _run(["uv", "lock", "--check"], cwd=MCP_DIR)
     _run(
-        ["uv", "export", "--no-dev", "--no-editable", "--no-hashes", "--output-file", "requirements-audit.txt"],
+        [
+            "uv",
+            "export",
+            "--no-dev",
+            "--no-editable",
+            "--no-emit-project",
+            "--no-hashes",
+            "--output-file",
+            "requirements-audit.txt",
+        ],
         cwd=MCP_DIR,
     )
     _run(["uvx", "pip-audit", "-r", "requirements-audit.txt"], cwd=MCP_DIR)
