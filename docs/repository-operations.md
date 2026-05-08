@@ -7,6 +7,13 @@ This repository uses a dual-owner model:
 - `oaslananka-lab/fovux` is the protected CI/CD and release repository.
 
 Changes land through reviewed pull requests. Direct branch replay and tag rewriting are intentionally disabled.
+The two repositories must stay identical for branches, tags, releases, labels,
+open issues, and open pull requests. Repository Parity runs in the org repo
+every 30 minutes to detect drift.
+
+`MIRROR_PAT` is required in `oaslananka-lab/fovux` for workflows that need to
+write back to `oaslananka/fovux`, such as mirroring release commits, release
+tags, and release assets after release-please publishes from the org repo.
 
 ## Disable Actions defensively on personal repo
 

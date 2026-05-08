@@ -1,0 +1,87 @@
+name: Repository Parity
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  issues: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  verify:
+    if: github.repository == 'oaslananka-lab/fovux'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Verify personal and org repository parity
+        env:
+          GH_TOKEN: ${{ secrets.MIRROR_PAT }}
+          PERSONAL_REPO: oaslananka/fovux
+          ORG_REPO: oaslananka-lab/fovux
+        run: |
+          set -euo pipefail
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "::error::MIRROR_PAT is required for cross-repository parity verification."
+            exit 1
+          fi
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+
+          git ls-remote "https://github.com/${PERSONAL_REPO}.git" \
+            'refs/heads/*' 'refs/tags/*' | sort >"$tmp/personal-refs"
+          git ls-remote "https://github.com/${ORG_REPO}.git" \
+            'refs/heads/*' 'refs/tags/*' | sort >"$tmp/org-refs"
+          diff -u "$tmp/personal-refs" "$tmp/org-refs"
+
+          gh api "repos/${PERSONAL_REPO}" \
+            --jq '{default_branch,has_issues,has_projects,has_wiki,delete_branch_on_merge}' \
+            >"$tmp/personal-settings"
+          gh api "repos/${ORG_REPO}" \
+            --jq '{default_branch,has_issues,has_projects,has_wiki,delete_branch_on_merge}' \
+            >"$tmp/org-settings"
+          diff -u "$tmp/personal-settings" "$tmp/org-settings"
+
+          gh api "repos/${PERSONAL_REPO}/actions/permissions" \
+            --jq '{enabled}' >"$tmp/personal-actions"
+          gh api "repos/${ORG_REPO}/actions/permissions" \
+            --jq '{enabled}' >"$tmp/org-actions"
+          grep -qx '{"enabled":false}' "$tmp/personal-actions"
+          grep -qx '{"enabled":true}' "$tmp/org-actions"
+
+          gh api "repos/${PERSONAL_REPO}/releases" \
+            --jq 'map({tag_name,name,draft,prerelease,assets:[.assets[].name]}) | sort_by(.tag_name)' \
+            >"$tmp/personal-releases"
+          gh api "repos/${ORG_REPO}/releases" \
+            --jq 'map({tag_name,name,draft,prerelease,assets:[.assets[].name]}) | sort_by(.tag_name)' \
+            >"$tmp/org-releases"
+          diff -u "$tmp/personal-releases" "$tmp/org-releases"
+
+          gh label list --repo "$PERSONAL_REPO" --limit 500 --json name,color,description \
+            --jq 'sort_by(.name)' >"$tmp/personal-labels"
+          gh label list --repo "$ORG_REPO" --limit 500 --json name,color,description \
+            --jq 'sort_by(.name)' >"$tmp/org-labels"
+          diff -u "$tmp/personal-labels" "$tmp/org-labels"
+
+          gh pr list --repo "$PERSONAL_REPO" --state open --json number,title,headRefName,isDraft \
+            --jq 'sort_by(.number)' >"$tmp/personal-prs"
+          gh pr list --repo "$ORG_REPO" --state open --json number,title,headRefName,isDraft \
+            --jq 'sort_by(.number)' >"$tmp/org-prs"
+          diff -u "$tmp/personal-prs" "$tmp/org-prs"
+
+          gh issue list --repo "$PERSONAL_REPO" --state open --json number,title \
+            --jq 'sort_by(.number)' >"$tmp/personal-issues"
+          gh issue list --repo "$ORG_REPO" --state open --json number,title \
+            --jq 'sort_by(.number)' >"$tmp/org-issues"
+          diff -u "$tmp/personal-issues" "$tmp/org-issues"
