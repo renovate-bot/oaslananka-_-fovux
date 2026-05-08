@@ -74,6 +74,15 @@ if (config["separate-pull-requests"] !== false) {
   fail("release-please must create one grouped release pull request");
 }
 
+if (
+  config["group-pull-request-title-pattern"] !==
+  "chore(release): release ${component} ${version}"
+) {
+  fail(
+    "group release pull request title must include component and version for release-please tagging",
+  );
+}
+
 const linkedVersions = config.plugins?.find(
   (plugin) => plugin.type === "linked-versions",
 );
