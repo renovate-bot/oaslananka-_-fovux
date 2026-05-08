@@ -180,8 +180,14 @@ jobs:
 
       - name: Publish Python package
         working-directory: fovux-mcp
+        env:
+          PYPI_TRUSTED_PUBLISHING_ENABLED: ${{ vars.PYPI_TRUSTED_PUBLISHING_ENABLED }}
         run: |
           set -euo pipefail
+          if [[ "$PYPI_TRUSTED_PUBLISHING_ENABLED" != "true" ]]; then
+            echo "::notice::Skipping PyPI publish until PYPI_TRUSTED_PUBLISHING_ENABLED is true and the PyPI trusted publisher matches this workflow."
+            exit 0
+          fi
           uv publish dist/*
 
       - name: Verify Python release
@@ -254,6 +260,10 @@ jobs:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
         run: |
           set -euo pipefail
+          if [[ -z "${VSCE_PAT:-}" || -z "${OVSX_PAT:-}" ]]; then
+            echo "::notice::Skipping VS Marketplace/Open VSX publish until VSCE_PAT and OVSX_PAT are configured."
+            exit 0
+          fi
           pnpm dlx @vscode/vsce@3.9.1 publish --packagePath fovux-studio.vsix --pat "$VSCE_PAT"
           pnpm dlx ovsx@0.10.11 publish fovux-studio.vsix --pat "$OVSX_PAT"
 
