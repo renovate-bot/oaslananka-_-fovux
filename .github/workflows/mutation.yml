@@ -17,10 +17,14 @@ concurrency:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   mutate:
     if: github.repository == 'oaslananka-lab/fovux'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -29,22 +33,22 @@ jobs:
           enable-cache: true
       - name: Install project
         working-directory: fovux-mcp
-        run: uv sync --locked --extra dev
+        run: uv sync --frozen --extra dev
 
       - name: Run mutation tests
         working-directory: fovux-mcp
         run: |
+          set -euo pipefail
           uv run --with mutmut mutmut run \
             --paths-to-mutate src/fovux \
             --runner "uv run pytest -x --no-header -q -m 'not slow and not integration and not gpu'"
-        continue-on-error: true
 
       - name: Report
         working-directory: fovux-mcp
         run: |
+          set -euo pipefail
           uv run --with mutmut mutmut results
           uv run --with mutmut mutmut html
-        continue-on-error: true
 
       - name: Upload mutation report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

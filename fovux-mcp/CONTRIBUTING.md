@@ -8,8 +8,7 @@ Thank you for your interest in contributing to Fovux! This document explains how
 # Clone and install with locked dev dependencies
 git clone https://github.com/oaslananka/fovux
 cd fovux
-pip install uv
-uv sync --project fovux-mcp --locked --extra dev
+uv sync --project fovux-mcp --frozen --extra dev
 
 # Node.js / pnpm for the Studio companion
 corepack enable

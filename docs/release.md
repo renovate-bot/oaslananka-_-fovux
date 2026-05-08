@@ -1,34 +1,34 @@
 # Release Process
 
-Fovux uses a dual-repo release model.
+Fovux uses a protected release model.
 
 | Repo | Role |
 |---|---|
-| `oaslananka/fovux` | Canonical public repository and developer-facing source of truth |
-| `oaslananka-lab/fovux` | CI/CD runner mirror for release gates and publishing |
+| `oaslananka/fovux` | Public developer-facing repository |
+| `oaslananka-lab/fovux` | CI/CD, security gates, and publishing |
 
 ## Release Tracks
 
 ### fovux-mcp to PyPI
 
-- Versioned from Conventional Commits through release-please on the org mirror.
+- Versioned from Conventional Commits through release-please on the org repository.
 - Release artifacts are built from the tagged source.
 - Publishing uses PyPI trusted publishing through GitHub OIDC.
 
 ### fovux-studio to VS Marketplace and Open VSX
 
 - Versioned independently from `fovux-studio/package.json`.
-- The release workflow packages the extension with `vsce`.
+- The release workflow packages the extension with the VS Code extension CLI.
 - Publishing uses `VSCE_PAT` and `OVSX_PAT` from the org repo secrets.
 
 ## Normal Release
 
-1. Merge changes to `main` in `oaslananka/fovux`.
-2. The org mirror syncs `main` into `oaslananka-lab/fovux`.
-3. CI, CodeQL, security scans, and review gates pass on the org mirror.
-4. release-please opens a release PR with version and changelog updates.
-5. A maintainer reviews and merges the release PR.
-6. Publish jobs run for the package that received a release.
+1. Merge changes to `main` through a reviewed pull request.
+2. CI, CodeQL, security scans, and review gates pass on the org repository.
+3. release-please opens a release PR with version and changelog updates.
+4. A maintainer reviews and merges the release PR.
+5. Publish jobs run for the package that received a release.
+6. SBOM, SHA256 checksum, and provenance assets are attached to the GitHub Release.
 
 ## Emergency Hotfix
 

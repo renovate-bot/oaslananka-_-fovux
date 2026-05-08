@@ -36,7 +36,7 @@ check_clean_github_queue() {
   else
     open_issues="0"
   fi
-  extra_branches="$(gh api "repos/$repo/branches" --paginate --jq '.[].name' | grep -vc '^main$' || true)"
+  extra_branches="$(gh api "repos/$repo/branches" --paginate --jq '.[].name' | awk '$0 != "main" { count++ } END { print count + 0 }')"
 
   if [ "$open_prs" = "0" ] && [ "$open_issues" = "0" ] && [ "$extra_branches" = "0" ]; then
     echo "  OK $repo queue: no open PRs, no open issues, no extra branches"
@@ -56,6 +56,7 @@ required_common=(
   ".github/labels.yml:GAP-FV-06"
   ".github/labeler.yml:GAP-FV-06"
   ".github/rulesets/main.json:GAP-FV-07"
+  ".github/rulesets/release-tags.json:GAP-FV-07"
   ".github/workflows/review-thread-gate.yml:GAP-FV-08"
   ".github/workflows/stale.yml:GAP-FV-09"
   ".github/workflows/lock.yml:GAP-FV-10"
@@ -73,6 +74,7 @@ required_org=(
   ".github/workflows/dependabot-auto-merge.yml:GAP-LAB-05"
   ".github/workflows/security.yml:GAP-LAB-06"
   ".github/rulesets/main.json:GAP-LAB-07"
+  ".github/rulesets/release-tags.json:GAP-LAB-07"
   ".github/labels.yml:GAP-LAB-08"
   ".github/labeler.yml:GAP-LAB-08"
   ".github/workflows/stale.yml:GAP-LAB-09"
@@ -81,7 +83,6 @@ required_org=(
   ".github/workflows/release-please.yml:GAP-LAB-12"
   "release-please-config.json:GAP-LAB-12"
   ".release-please-manifest.json:GAP-LAB-12"
-  ".github/workflows/mirror.yml:GAP-LAB-13"
   "docs/testing.md:GAP-LAB-15"
 )
 

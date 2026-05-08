@@ -7,7 +7,14 @@ on:
 
 permissions:
   contents: read
-  issues: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
   compat:
@@ -29,14 +36,12 @@ jobs:
 
       - name: Test with latest deps
         working-directory: fovux-mcp
-        id: test
-        continue-on-error: true
         run: bash scripts/test_with_latest_deps.sh
 
-      - name: Create issue on failure
-        if: steps.test.outcome == 'failure'
-        uses: peter-evans/create-issue-from-file@fca9117c27cdc29c6c4db3b86c48e4115a786710
+      - name: Upload compatibility report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          title: "Nightly compat break: ${{ github.sha }}"
-          content-filepath: fovux-mcp/nightly-compat-report.txt
-          labels: compat-break
+          name: nightly-compat-report
+          path: fovux-mcp/nightly-compat-report.txt
+          retention-days: 14

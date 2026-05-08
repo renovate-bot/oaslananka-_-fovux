@@ -32,7 +32,7 @@ stages:
           - pwsh: |
               Set-Location fovux-studio
               pnpm audit:prod
-            displayName: npm audit
+            displayName: pnpm audit
 
   - stage: FovuxStudio_Build
     displayName: "fovux-studio — Build"
@@ -60,7 +60,7 @@ stages:
               Set-Location fovux-studio
               pnpm install --frozen-lockfile
               pnpm build
-              pnpm exec vsce package --out fovux-studio.vsix --no-dependencies
+              pnpm dlx @vscode/vsce@3.9.1 package --out fovux-studio.vsix --no-dependencies
             displayName: Build VSIX
           - publish: fovux-studio/fovux-studio.vsix
             artifact: fovux-studio-vsix

@@ -13,10 +13,18 @@ stages:
               versionSpec: "3.13"
           - task: UseNode@1
             inputs:
-              version: "22.x"
-          - pwsh: python -m pip install uv
+              version: "24.14.1"
+          - pwsh: |
+              Invoke-RestMethod https://astral.sh/uv/install.ps1 | Invoke-Expression
+              if ($IsWindows) {
+                Write-Host "##vso[task.prependpath]$env:USERPROFILE\.local\bin"
+              } else {
+                Write-Host "##vso[task.prependpath]$env:HOME/.local/bin"
+              }
             displayName: Install Python tooling
-          - pwsh: npm install -g pnpm
+          - pwsh: |
+              corepack enable
+              corepack prepare pnpm@10.33.0 --activate
             displayName: Install pnpm
           - pwsh: |
               Set-Location fovux-mcp
@@ -32,4 +40,4 @@ stages:
               pnpm install --frozen-lockfile
               pnpm outdated
               pnpm audit --prod
-            displayName: Nightly npm checks
+            displayName: Nightly pnpm checks

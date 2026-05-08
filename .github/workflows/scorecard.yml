@@ -7,17 +7,25 @@ on:
   push:
     branches: ["main"]
 
-permissions: read-all
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
   analysis:
     if: github.repository == 'oaslananka-lab/fovux' && github.ref == 'refs/heads/main'
     name: Scorecard analysis
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
-      id-token: write
 
     steps:
       - name: "Checkout code"
@@ -25,12 +33,34 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Install Scorecard
+        env:
+          SCORECARD_VERSION: "5.5.0"
+          SCORECARD_SHA256: 83b90a05c1540ef1390db1cd5711e5fd04be9c1d8537fb84d39d02092d6a8dff
+        run: |
+          set -euo pipefail
+          curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+            --output scorecard.tar.gz \
+            "https://github.com/ossf/scorecard/releases/download/v${SCORECARD_VERSION}/scorecard_${SCORECARD_VERSION}_linux_amd64.tar.gz"
+          echo "${SCORECARD_SHA256}  scorecard.tar.gz" | sha256sum --check -
+          tar -xzf scorecard.tar.gz scorecard
+          sudo install -m 0755 scorecard /usr/local/bin/scorecard
+
       - name: "Run analysis"
-        uses: ossf/scorecard-action@4eaacf0543bb3f2c246792bd56e8cdeffafb205a
-        with:
-          results_file: results.json
-          results_format: json
-          publish_results: true
+        env:
+          GITHUB_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          scorecard \
+            --repo=github.com/oaslananka-lab/fovux \
+            --format=json \
+            --show-details \
+            --output results.json
+
+      - name: Enforce minimum score
+        run: |
+          set -euo pipefail
+          jq -e '.score >= 7.0' results.json
 
       - name: "Upload artifact"
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -38,3 +68,15 @@ jobs:
           name: scorecard-results
           path: results.json
           retention-days: 5
+
+  scorecard-required:
+    name: scorecard-required
+    needs: analysis
+    if: github.repository == 'oaslananka-lab/fovux' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Confirm Scorecard passed
+        run: |
+          set -euo pipefail
+          echo "Scorecard passed."

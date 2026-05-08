@@ -7,8 +7,7 @@ This quickstart walks through the end-to-end local workflow on a YOLO dataset.
 ```bash
 git clone https://github.com/oaslananka/fovux
 cd fovux/fovux-mcp
-pip install uv
-uv sync --extra dev
+uv sync --frozen --extra dev
 ```
 
 ## 2. Register Fovux In Your MCP Client

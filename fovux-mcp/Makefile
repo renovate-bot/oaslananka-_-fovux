@@ -19,8 +19,7 @@ help:
 	@echo "  release      Build wheel and sdist"
 
 install:
-	pip install uv
-	uv sync --locked --extra dev
+	uv sync --frozen --extra dev
 	uv run pre-commit install --hook-type pre-commit --hook-type pre-push
 
 test:
@@ -72,4 +71,4 @@ serve-docs:
 	uv run mkdocs serve
 
 release:
-	python -m build
+	uv build

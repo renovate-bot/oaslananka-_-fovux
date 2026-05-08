@@ -1,10 +1,11 @@
 # Release Process
 
-Releases are completely automated via GitHub Actions on the org mirror.
+Releases are automated from merges to `main` in `oaslananka-lab/fovux`.
 
-1. Go to Actions -> Release workflow in the `oaslananka-lab` mirror.
-2. Run workflow.
-3. Input the version (e.g. `v1.2.3`).
-4. Select `publish=true` and type `APPROVE_RELEASE` to actually publish to registries. Otherwise, it will just create a draft GitHub release.
+1. A maintainer merges a normal pull request with Conventional Commits.
+2. `release-please` evaluates commit history and updates the package version files and changelog in a release pull request.
+3. A maintainer reviews and merges the release pull request.
+4. The release workflow creates the GitHub Release from release-please outputs.
+5. Publish jobs build artifacts on GitHub-hosted runners, generate SBOMs and SHA256 checksums, attest provenance, attach assets, publish to registries, and verify the release.
 
-The workflow will automatically sign the binaries with Sigstore and upload provenance. It will also mirror the release back to the canonical repository.
+Version numbers are never supplied manually. Release tags are component-specific for the monorepo packages.

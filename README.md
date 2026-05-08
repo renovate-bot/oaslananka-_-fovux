@@ -52,12 +52,6 @@ Install the VS Code extension, open the command palette (`Ctrl+Shift+P`), and ty
 uv tool install fovux-mcp
 ```
 
-### Using `pip`
-
-```bash
-pip install fovux-mcp
-```
-
 ### Fovux Studio (VS Code Extension)
 
 Search for **Fovux Studio** in the VS Code Marketplace or Open VSX, or install via the CLI:
@@ -68,7 +62,7 @@ code --install-extension oaslananka.fovux-studio
 
 ## MCP client configuration
 
-To connect Claude Desktop or other MCP clients to Fovux, add the following to your MCP client configuration (`mcp_config.json`):
+To connect an MCP desktop client to Fovux, add the following to your MCP client configuration (`mcp_config.json`):
 
 ```json
 {
@@ -126,13 +120,13 @@ Fovux is built for enterprise privacy. **No telemetry is collected by default.**
 
 ## CI/CD and release model
 
-Fovux maintains a secure, three-repo distribution model:
+Fovux maintains a secure release model:
 
-- `oaslananka/fovux`: The primary developer-facing public GitHub mirror.
+- `oaslananka/fovux`: The primary developer-facing public repository.
 - `oaslananka-lab/fovux`: The GitHub organization repository containing the authoritative CI/CD pipelines and release gates.
 - `dev.azure.com/...`: An enterprise public mirror.
 
-All releases are strictly gated, manually approved, and signed using an isolated CI environment.
+All releases are created by release-please from Conventional Commits, gated by CI, and published from GitHub Actions with checksums, SBOMs, and provenance.
 
 ## Repository operations
 

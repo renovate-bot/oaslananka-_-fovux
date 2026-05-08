@@ -17,13 +17,9 @@ export function registerWalkthroughCommands(
         message: "Installing fovux-mcp backend...",
       });
       if (process.platform === "win32") {
-        terminal.sendText(
-          "uv tool install fovux-mcp 2>$null; if ($LASTEXITCODE -ne 0) { pip install fovux-mcp }",
-        );
+        terminal.sendText("uv tool install fovux-mcp");
       } else {
-        terminal.sendText(
-          "command -v uv >/dev/null 2>&1 && uv tool install fovux-mcp || pip install fovux-mcp",
-        );
+        terminal.sendText("uv tool install fovux-mcp");
       }
       terminal.show();
       void vscode.commands.executeCommand(

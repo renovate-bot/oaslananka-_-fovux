@@ -8,15 +8,26 @@ permissions:
   contents: write
   pull-requests: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
 jobs:
   release-please:
     if: github.repository == 'oaslananka-lab/fovux'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     outputs:
       mcp_release_created: ${{ steps.rp.outputs['fovux-mcp--release_created'] }}
       mcp_tag_name: ${{ steps.rp.outputs['fovux-mcp--tag_name'] }}
+      mcp_version: ${{ steps.rp.outputs['fovux-mcp--version'] }}
       studio_release_created: ${{ steps.rp.outputs['fovux-studio--release_created'] }}
       studio_tag_name: ${{ steps.rp.outputs['fovux-studio--tag_name'] }}
+      studio_version: ${{ steps.rp.outputs['fovux-studio--version'] }}
 
     steps:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7
@@ -31,30 +42,76 @@ jobs:
     if: >
       needs.release-please.outputs.mcp_release_created == 'true' &&
       github.repository == 'oaslananka-lab/fovux'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: pypi-production
+    timeout-minutes: 30
     permissions:
+      attestations: write
+      contents: write
       id-token: write
-      contents: read
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           ref: ${{ needs.release-please.outputs.mcp_tag_name }}
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
+
       - name: Build Python package
         working-directory: fovux-mcp
-        run: uv build
-      - uses: pypa/gh-action-pypi-publish@76f52bc884231f62b9a034ebfe128415bbaabdfc
+        run: |
+          set -euo pipefail
+          uv build
+
+      - name: Generate SBOM and checksums
+        run: |
+          set -euo pipefail
+          uv run --project fovux-mcp python scripts/build_spdx_sbom.py \
+            --name fovux-mcp \
+            --output fovux-mcp-sbom.spdx.json
+          sha256sum fovux-mcp/dist/* fovux-mcp-sbom.spdx.json > fovux-mcp.sha256
+
+      - name: Attest Python release assets
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32
         with:
-          packages-dir: fovux-mcp/dist/
+          subject-checksums: fovux-mcp.sha256
+
+      - name: Attach Python release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.release-please.outputs.mcp_tag_name }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG_NAME" \
+            fovux-mcp/dist/* \
+            fovux-mcp-sbom.spdx.json \
+            fovux-mcp.sha256
+
+      - name: Publish Python package
+        working-directory: fovux-mcp
+        run: |
+          set -euo pipefail
+          uv publish dist/*
+
+      - name: Verify Python release
+        env:
+          TAG_NAME: ${{ needs.release-please.outputs.mcp_tag_name }}
+          VERSION: ${{ needs.release-please.outputs.mcp_version }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null
+          test -n "$VERSION"
 
   publish-studio:
     needs: release-please
     if: >
       needs.release-please.outputs.studio_release_created == 'true' &&
       github.repository == 'oaslananka-lab/fovux'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: vsce-production
+    timeout-minutes: 30
+    permissions:
+      attestations: write
+      contents: write
+      id-token: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
@@ -62,14 +119,56 @@ jobs:
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version-file: .nvmrc
-      - name: Build and publish extension
+
+      - name: Build VSIX
+        working-directory: fovux-studio
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack prepare pnpm@10.33.0 --activate
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm dlx @vscode/vsce@3.9.1 package --out fovux-studio.vsix
+
+      - name: Generate SBOM and checksums
+        run: |
+          set -euo pipefail
+          node scripts/build_node_spdx_sbom.mjs \
+            --package fovux-studio/package.json \
+            --output fovux-studio-sbom.spdx.json
+          sha256sum fovux-studio/fovux-studio.vsix fovux-studio-sbom.spdx.json > fovux-studio.sha256
+
+      - name: Attest Studio release assets
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32
+        with:
+          subject-checksums: fovux-studio.sha256
+
+      - name: Attach Studio release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.release-please.outputs.studio_tag_name }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG_NAME" \
+            fovux-studio/fovux-studio.vsix \
+            fovux-studio-sbom.spdx.json \
+            fovux-studio.sha256
+
+      - name: Publish Studio extension
         working-directory: fovux-studio
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
         run: |
-          npm install --global pnpm@10.33.0
-          pnpm install --frozen-lockfile
-          npx --yes @vscode/vsce@3.9.1 package
-          npx --yes @vscode/vsce@3.9.1 publish --pat "$VSCE_PAT"
-          npx --yes ovsx@0.10.11 publish ./*.vsix --pat "$OVSX_PAT"
+          set -euo pipefail
+          pnpm dlx @vscode/vsce@3.9.1 publish --packagePath fovux-studio.vsix --pat "$VSCE_PAT"
+          pnpm dlx ovsx@0.10.11 publish fovux-studio.vsix --pat "$OVSX_PAT"
+
+      - name: Verify Studio release
+        env:
+          TAG_NAME: ${{ needs.release-please.outputs.studio_tag_name }}
+          VERSION: ${{ needs.release-please.outputs.studio_version }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null
+          test -n "$VERSION"

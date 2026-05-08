@@ -1,14 +1,12 @@
 # Repository Operations
 
-## Dual-owner mirror model
+## Dual-owner repository model
 
 This repository uses a dual-owner model:
 - `oaslananka/fovux` is the canonical public repository. It consumes **zero** GitHub Actions minutes.
-- `oaslananka-lab/fovux` is the CI/CD runner mirror. All Actions run here, on the org plan.
+- `oaslananka-lab/fovux` is the protected CI/CD and release repository.
 
-The mirror periodically pulls from canonical (every 15 minutes) and replays branches and tags into itself. 
-
-If you need an immediate sync, set up a one-time manual webhook from canonical to org that fires `repository_dispatch` events of type `canonical-push`.
+Changes land through reviewed pull requests. Direct branch replay and tag rewriting are intentionally disabled.
 
 ## Disable Actions defensively on personal repo
 
@@ -29,4 +27,4 @@ The canonical repo should have "Automatically delete head branches" enabled:
 gh api -X PATCH /repos/oaslananka/fovux -f delete_branch_on_merge=true
 ```
 
-You can run `bash scripts/repo-cleanup.sh` to review and clean up old branches automatically.
+Use the branch hygiene report workflow to review old branches before deleting them.

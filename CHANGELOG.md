@@ -28,7 +28,7 @@ The format follows Keep a Changelog, and this project uses semantic versioning.
 
 - Avoid recursive filesystem-root scans during dataset format auto-detection, preventing adversarial
   `dataset_inspect("/")` inputs from traversing an entire drive.
-- Replace GitHub Actions Corepack pnpm activation with pinned `pnpm@10.33.0` npm installation to
+- Replace GitHub Actions Corepack pnpm activation with pinned `pnpm@10.33.0` provisioning to
   remove Windows runner hangs while keeping CI installs deterministic.
 
 ### Security
@@ -69,8 +69,7 @@ The format follows Keep a Changelog, and this project uses semantic versioning.
 - Removed the fragile `pnpm.overrides.uuid` override while keeping the lockfile frozen-compatible.
 - Added missing contributed Studio commands for walkthrough actions and dataset validation.
 - Removed the invalid `enablement: "false"` manifest entry from `fovux.revealPath`.
-- Backend install walkthrough action now prefers `uv tool install fovux-mcp` before falling back to
-  `pip install fovux-mcp`.
+- Backend install walkthrough action now uses `uv tool install fovux-mcp` as the supported path.
 - `nightly-compat.yml` now uses setup-uv and writes a compatibility report consumed by issue
   creation on failure.
 - `verify_doppler_secrets.sh` now fails early with a clear message when the Doppler CLI is missing.

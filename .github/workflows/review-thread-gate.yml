@@ -17,12 +17,16 @@ permissions:
   pull-requests: read
   statuses: write
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   check-threads:
     if: >
       github.repository == 'oaslananka-lab/fovux' &&
       github.event.pull_request.draft == false
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Check unresolved review threads

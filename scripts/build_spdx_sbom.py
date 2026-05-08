@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import os
 from datetime import UTC, datetime
 from importlib import metadata
 from pathlib import Path
-from uuid import uuid4
 
 
 def main() -> int:
@@ -25,18 +26,18 @@ def main() -> int:
 
 
 def _write_json_sbom(name: str, output: Path) -> None:
-    created = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    distributions = _distributions()
     document = {
         "spdxVersion": "SPDX-2.3",
         "dataLicense": "CC0-1.0",
         "SPDXID": "SPDXRef-DOCUMENT",
         "name": name,
-        "documentNamespace": f"https://github.com/oaslananka/fovux/spdx/{uuid4()}",
+        "documentNamespace": _document_namespace(name, distributions),
         "creationInfo": {
-            "created": created,
+            "created": _created_timestamp(),
             "creators": ["Tool: fovux-build-spdx-sbom.py"],
         },
-        "packages": [_package_json(dist) for dist in _distributions()],
+        "packages": [_package_json(dist) for dist in distributions],
     }
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(
@@ -45,18 +46,19 @@ def _write_json_sbom(name: str, output: Path) -> None:
 
 
 def _write_tag_value_sbom(name: str, output: Path) -> None:
+    distributions = _distributions()
     lines = [
         "SPDXVersion: SPDX-2.3",
         "DataLicense: CC0-1.0",
         "SPDXID: SPDXRef-DOCUMENT",
         f"DocumentName: {name}",
-        f"DocumentNamespace: https://github.com/oaslananka/fovux/spdx/{uuid4()}",
+        f"DocumentNamespace: {_document_namespace(name, distributions)}",
         "Creator: Tool: fovux-build-spdx-sbom.py",
-        f"Created: {datetime.now(UTC).strftime('%Y-%m-%dT%H:%M:%SZ')}",
+        f"Created: {_created_timestamp()}",
         "",
     ]
 
-    for dist in _distributions():
+    for dist in distributions:
         name = dist.metadata["Name"]
         version = dist.version
         license_value = _license_for(dist)
@@ -120,6 +122,20 @@ def _sanitize_license(value: str) -> str:
     allowed = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-.+")
     sanitized = "".join(char for char in value.strip() if char in allowed)
     return sanitized or "NOASSERTION"
+
+
+def _created_timestamp() -> str:
+    epoch = int(os.environ.get("SOURCE_DATE_EPOCH", "0"))
+    return datetime.fromtimestamp(epoch, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _document_namespace(name: str, distributions: list[metadata.Distribution]) -> str:
+    digest = hashlib.sha256()
+    digest.update(name.encode("utf-8"))
+    for dist in distributions:
+        digest.update(dist.metadata["Name"].lower().encode("utf-8"))
+        digest.update(dist.version.encode("utf-8"))
+    return f"https://github.com/oaslananka/fovux/spdx/{digest.hexdigest()}"
 
 
 if __name__ == "__main__":

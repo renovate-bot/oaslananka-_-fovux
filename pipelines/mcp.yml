@@ -16,12 +16,18 @@ stages:
               restoreKeys: |
                 uv | "$(Agent.OS)"
               path: $(UV_CACHE_DIR)
-          - pwsh: python -m pip install uv
+          - pwsh: |
+              Invoke-RestMethod https://astral.sh/uv/install.ps1 | Invoke-Expression
+              if ($IsWindows) {
+                Write-Host "##vso[task.prependpath]$env:USERPROFILE\.local\bin"
+              } else {
+                Write-Host "##vso[task.prependpath]$env:HOME/.local/bin"
+              }
             displayName: Install uv
           - pwsh: |
               $env:UV_CACHE_DIR = "$(UV_CACHE_DIR)"
               Set-Location fovux-mcp
-              uv sync --locked --extra dev
+              uv sync --frozen --extra dev
             displayName: Install deps
           - pwsh: |
               python scripts/quality_gate.py mcp-lint
@@ -56,12 +62,18 @@ stages:
               restoreKeys: |
                 uv | "$(Agent.OS)"
               path: $(UV_CACHE_DIR)
-          - pwsh: python -m pip install uv
+          - pwsh: |
+              Invoke-RestMethod https://astral.sh/uv/install.ps1 | Invoke-Expression
+              if ($IsWindows) {
+                Write-Host "##vso[task.prependpath]$env:USERPROFILE\.local\bin"
+              } else {
+                Write-Host "##vso[task.prependpath]$env:HOME/.local/bin"
+              }
             displayName: Install uv
           - pwsh: |
               $env:UV_CACHE_DIR = "$(UV_CACHE_DIR)"
               Set-Location fovux-mcp
-              uv sync --locked --extra dev
+              uv sync --frozen --extra dev
             displayName: Install deps
           - pwsh: |
               Set-Location fovux-mcp
@@ -102,12 +114,18 @@ stages:
               restoreKeys: |
                 uv | "$(Agent.OS)"
               path: $(UV_CACHE_DIR)
-          - pwsh: python -m pip install uv
+          - pwsh: |
+              Invoke-RestMethod https://astral.sh/uv/install.ps1 | Invoke-Expression
+              if ($IsWindows) {
+                Write-Host "##vso[task.prependpath]$env:USERPROFILE\.local\bin"
+              } else {
+                Write-Host "##vso[task.prependpath]$env:HOME/.local/bin"
+              }
             displayName: Install uv
           - pwsh: |
               $env:UV_CACHE_DIR = "$(UV_CACHE_DIR)"
               Set-Location fovux-mcp
-              uv sync --locked --extra dev
+              uv sync --frozen --extra dev
             displayName: Install deps
           - pwsh: |
               Set-Location fovux-mcp
@@ -137,12 +155,18 @@ stages:
               restoreKeys: |
                 uv | "$(Agent.OS)"
               path: $(UV_CACHE_DIR)
-          - pwsh: python -m pip install uv
+          - pwsh: |
+              Invoke-RestMethod https://astral.sh/uv/install.ps1 | Invoke-Expression
+              if ($IsWindows) {
+                Write-Host "##vso[task.prependpath]$env:USERPROFILE\.local\bin"
+              } else {
+                Write-Host "##vso[task.prependpath]$env:HOME/.local/bin"
+              }
             displayName: Install audit tooling
           - pwsh: |
               $env:UV_CACHE_DIR = "$(UV_CACHE_DIR)"
               Set-Location fovux-mcp
-              uv sync --locked --extra dev
+              uv sync --frozen --extra dev
             displayName: Install audit deps
           - pwsh: |
               python scripts/quality_gate.py mcp-audit
@@ -165,12 +189,18 @@ stages:
               restoreKeys: |
                 uv | "$(Agent.OS)"
               path: $(UV_CACHE_DIR)
-          - pwsh: python -m pip install uv
+          - pwsh: |
+              Invoke-RestMethod https://astral.sh/uv/install.ps1 | Invoke-Expression
+              if ($IsWindows) {
+                Write-Host "##vso[task.prependpath]$env:USERPROFILE\.local\bin"
+              } else {
+                Write-Host "##vso[task.prependpath]$env:HOME/.local/bin"
+              }
             displayName: Install uv
           - pwsh: |
               $env:UV_CACHE_DIR = "$(UV_CACHE_DIR)"
               Set-Location fovux-mcp
-              uv sync --locked --extra dev
+              uv sync --frozen --extra dev
             displayName: Install docs deps
           - pwsh: |
               python scripts/quality_gate.py mcp-docs
@@ -196,16 +226,22 @@ stages:
               restoreKeys: |
                 uv | "$(Agent.OS)"
               path: $(UV_CACHE_DIR)
-          - pwsh: python -m pip install uv
+          - pwsh: |
+              Invoke-RestMethod https://astral.sh/uv/install.ps1 | Invoke-Expression
+              if ($IsWindows) {
+                Write-Host "##vso[task.prependpath]$env:USERPROFILE\.local\bin"
+              } else {
+                Write-Host "##vso[task.prependpath]$env:HOME/.local/bin"
+              }
             displayName: Install build tooling
           - pwsh: |
               $env:UV_CACHE_DIR = "$(UV_CACHE_DIR)"
               Set-Location fovux-mcp
-              uv sync --locked --extra dev
+              uv sync --frozen --extra dev
               uv export --no-dev --no-editable --no-hashes --output-file requirements-build.txt
               uv run python -m cyclonedx_py requirements requirements-build.txt -o sbom.cdx.json
               uv run python ../scripts/build_spdx_sbom.py --output sbom.spdx
-              uv run python -m build
+              uv build
             displayName: Build wheel + sdist + SBOM
           - publish: fovux-mcp/dist
             artifact: fovux-mcp-dist

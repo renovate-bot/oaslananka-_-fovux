@@ -28,7 +28,7 @@ and resource availability.
 
 **Theme: Breaking changes and API stabilization.**
 
-- Public API surface finalized with deprecation removals.
+- Public API surface finalized with retired compatibility shims removed.
 - HTTP transport v2 with WebSocket support.
 - Plugin system for custom tools.
 - Multi-language SDK (Python, TypeScript).

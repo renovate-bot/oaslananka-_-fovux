@@ -17,6 +17,6 @@ Run the local HTTP transport when Studio needs live run metrics:
 fovux-mcp serve --http --host 127.0.0.1 --port 7823
 ```
 
-## Codex CLI
+## Other MCP Clients
 
-Use Fovux as a standard MCP server entry in Codex CLI and keep the filesystem local.
+Use Fovux as a standard MCP server entry in any MCP-compatible client and keep the filesystem local.

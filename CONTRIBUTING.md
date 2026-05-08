@@ -19,7 +19,7 @@ fovux/
 | Tool                             | Version                                                       | Install                                                       |
 | -------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------- |
 | Python                           | ≥ 3.11                                                        | https://python.org                                            |
-| [uv](https://docs.astral.sh/uv/) | latest                                                        | `pip install uv`                                              |
+| [uv](https://docs.astral.sh/uv/) | latest                                                        | official standalone installer                                 |
 | Node.js                          | >= 22.0.0, with 24.14.1 pinned in `.nvmrc` for release builds | https://nodejs.org                                            |
 | pnpm                             | 10.33.0                                                       | `corepack enable && corepack prepare pnpm@10.33.0 --activate` |
 | pre-commit                       | ≥ 4.0                                                         | included in `dev` extra                                       |

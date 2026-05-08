@@ -9,11 +9,11 @@ tasks:
   install:
     desc: Install all dev dependencies
     cmds:
-      - cmd: cd fovux-mcp && uv sync --extra dev
+      - cmd: cd fovux-mcp && uv sync --frozen --extra dev
         platforms: [linux, darwin, windows]
         ignore_error: false
-      - cmd: corepack enable
-        platforms: [linux, darwin]
+      - cmd: pnpm --version
+        platforms: [linux, darwin, windows]
       - cmd: cd fovux-studio && pnpm install --frozen-lockfile
 
   hooks:
@@ -28,8 +28,7 @@ tasks:
     cmds:
       - cmd: cd fovux-mcp && uvx ruff check --fix .
       - cmd: cd fovux-mcp && uvx ruff format .
-      - cmd: cd fovux-studio && pnpm prettier --write . || true
-        ignore_error: true
+      - cmd: cd fovux-studio && pnpm prettier --write .
 
   lint:
     desc: Run all linters (read-only)
@@ -70,7 +69,12 @@ tasks:
       - cmd: cd fovux-mcp && uv run pip-audit --requirement requirements-audit.txt
       - cmd: cd fovux-studio && pnpm audit --prod
       - cmd: gitleaks detect --no-banner --redact
-        ignore_error: true
+
+  build:
+    desc: Build distributable packages
+    cmds:
+      - cmd: cd fovux-mcp && uv build
+      - cmd: cd fovux-studio && pnpm run build
 
   pre-push:
     desc: What pre-push hook runs (typecheck + fast tests + workflow lint)
@@ -86,6 +90,13 @@ tasks:
       - task: typecheck
       - task: test:cov
       - task: security
+      - task: build
+      - task: release:dry-run
+
+  release:dry-run:
+    desc: Validate release automation without creating tags or releases
+    cmds:
+      - cmd: node scripts/validate_release_automation.mjs
 
   ci:act:
     desc: Run GitHub Actions workflows locally with nektos/act

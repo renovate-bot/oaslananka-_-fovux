@@ -33,8 +33,7 @@ Current distribution is source-based from this repository. Packaged releases wil
 ```bash
 git clone https://github.com/oaslananka/fovux
 cd fovux/fovux-mcp
-pip install uv
-uv sync --locked --extra dev
+uv sync --frozen --extra dev
 ```
 
 ## Quick start (5 minutes)
@@ -45,8 +44,7 @@ See [docs/getting-started.md](docs/getting-started.md) for the full tutorial.
 # 1. Install from source
 git clone https://github.com/oaslananka/fovux
 cd fovux/fovux-mcp
-pip install uv
-uv sync --locked --extra dev
+uv sync --frozen --extra dev
 uv run fovux-mcp doctor
 
 # 2. Configure your MCP client (example: Cursor / Windsurf / VS Code)
@@ -93,12 +91,6 @@ uv run fovux-mcp serve --http --tcp --metrics
     }
   }
 }
-```
-
-### Codex CLI
-
-```bash
-codex --mcp fovux-mcp
 ```
 
 ## The tool set

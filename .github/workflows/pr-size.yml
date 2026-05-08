@@ -8,12 +8,20 @@ permissions:
   pull-requests: write
   issues: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
 jobs:
   label-size:
     if: >
       github.repository == 'oaslananka-lab/fovux' &&
       github.event.pull_request.draft == false
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Label by changed line count
@@ -35,8 +43,11 @@ jobs:
           elif [ "$changed" -le 500 ]; then label="size/L";
           else label="size/XL"; fi
 
+          current_labels="$(gh pr view "$PR_NUMBER" --json labels --jq '.labels[].name')"
           for old in "size/XS" "size/S" "size/M" "size/L" "size/XL"; do
-            gh pr edit "$PR_NUMBER" --remove-label "$old" >/dev/null 2>&1 || true
+            if printf '%s\n' "$current_labels" | grep -Fxq "$old"; then
+              gh pr edit "$PR_NUMBER" --remove-label "$old"
+            fi
           done
 
           gh pr edit "$PR_NUMBER" --add-label "$label"

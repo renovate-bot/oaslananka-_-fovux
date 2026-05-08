@@ -17,6 +17,10 @@ permissions:
   contents: read
   security-events: write
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   gitleaks:
     name: Gitleaks secret scan
@@ -26,7 +30,7 @@ jobs:
         github.event_name != 'pull_request' ||
         github.event.pull_request.draft == false
       )
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -34,7 +38,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
         with:
-          go-version: stable
+          go-version: "1.26.2"
           cache: false
       - name: Install Gitleaks
         run: go install github.com/zricethezav/gitleaks/v8@v8.30.1
@@ -49,7 +53,7 @@ jobs:
         github.event_name != 'pull_request' ||
         github.event.pull_request.draft == false
       )
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -78,7 +82,7 @@ jobs:
         github.event_name != 'pull_request' ||
         github.event.pull_request.draft == false
       )
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -88,7 +92,8 @@ jobs:
       - name: Run pip-audit
         working-directory: fovux-mcp
         run: |
-          uv sync --locked --extra dev
+          set -euo pipefail
+          uv sync --frozen --extra dev
           uv export --no-dev --no-editable --no-hashes --output-file requirements-audit.txt
           uv run pip-audit --requirement requirements-audit.txt --strict
 
@@ -100,7 +105,7 @@ jobs:
         github.event_name != 'pull_request' ||
         github.event.pull_request.draft == false
       )
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -110,6 +115,49 @@ jobs:
       - name: Run pnpm audit
         working-directory: fovux-studio
         run: |
-          npm install --global pnpm@10.33.0
+          set -euo pipefail
+          corepack enable
+          corepack prepare pnpm@10.33.0 --activate
           pnpm install --frozen-lockfile
           pnpm audit --prod
+
+  osv-scan:
+    name: OSV lockfile scan
+    if: >
+      github.repository == 'oaslananka-lab/fovux' &&
+      (
+        github.event_name != 'pull_request' ||
+        github.event.pull_request.draft == false
+      )
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - name: Install OSV scanner
+        env:
+          OSV_SCANNER_VERSION: v2.3.6
+          OSV_SCANNER_SHA256: f689e183ef0d573d2459738aae457d411a26241ae58b5088de1af288b3355604
+        run: |
+          set -euo pipefail
+          curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+            --output osv-scanner \
+            "https://github.com/google/osv-scanner/releases/download/${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64"
+          echo "${OSV_SCANNER_SHA256}  osv-scanner" | sha256sum --check -
+          chmod +x osv-scanner
+          sudo install -m 0755 osv-scanner /usr/local/bin/osv-scanner
+      - name: Run OSV scanner
+        run: |
+          set -euo pipefail
+          osv-scanner scan source --lockfile fovux-mcp/uv.lock --lockfile fovux-studio/pnpm-lock.yaml .
+
+  security-required:
+    name: security-required
+    needs: [gitleaks, trivy-fs, pip-audit, pnpm-audit, osv-scan]
+    if: github.repository == 'oaslananka-lab/fovux'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Confirm security scans passed
+        run: |
+          set -euo pipefail
+          echo "Security scans passed."

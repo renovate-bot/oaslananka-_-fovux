@@ -43,7 +43,7 @@ corepack enable
 corepack prepare pnpm@10.33.0 --activate
 pnpm install --frozen-lockfile
 pnpm verify
-pnpm exec vsce package --out fovux-studio.vsix --no-dependencies
+pnpm dlx @vscode/vsce@3.9.1 package --out fovux-studio.vsix --no-dependencies
 code --install-extension fovux-studio.vsix
 ```
 

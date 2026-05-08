@@ -7,7 +7,7 @@ set -euo pipefail
 DIST_DIR="${1:?Usage: verify_signatures.sh <dist-dir>}"
 
 if ! command -v sigstore &>/dev/null; then
-  echo "sigstore CLI not found. Install with: pip install sigstore"
+  echo "sigstore CLI not found. Install with: uv tool install sigstore"
   exit 1
 fi
 
@@ -21,7 +21,7 @@ for artifact in "$DIST_DIR"/*.whl "$DIST_DIR"/*.tar.gz; do
   echo ""
   echo "Verifying: $(basename "$artifact")"
   sigstore verify identity \
-    --cert-identity "https://github.com/oaslananka-lab/fovux/.github/workflows/manual-release.yml@refs/heads/main" \
+    --cert-identity "https://github.com/oaslananka-lab/fovux/.github/workflows/release-please.yml@refs/heads/main" \
     --cert-oidc-issuer "https://token.actions.githubusercontent.com" \
     "$artifact" || {
     echo "FAILED: $artifact"

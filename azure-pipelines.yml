@@ -3,8 +3,6 @@ trigger: none
 pr: none
 
 variables:
-  RELEASE_ENABLED: "true"
-  MANUAL_RELEASE_APPROVED: "true"
   RUN_SLOW_TESTS: "false"
   RUN_NIGHTLY: "false"
   RUN_SECONDARY_OS: "false"
@@ -16,4 +14,3 @@ stages:
   - template: pipelines/studio.yml
   - template: pipelines/slow.yml
   - template: pipelines/nightly.yml
-  - template: pipelines/release.yml

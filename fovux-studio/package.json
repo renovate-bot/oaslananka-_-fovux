@@ -851,7 +851,7 @@
     "audit:prod": "pnpm audit --prod",
     "check": "pnpm format && pnpm lint && pnpm typecheck && pnpm test",
     "verify": "pnpm check && pnpm build && pnpm audit:prod",
-    "package": "npx --yes @vscode/vsce@3.9.1 package",
+    "package": "pnpm dlx @vscode/vsce@3.9.1 package",
     "check:bundle-size": "node scripts/check-bundle-size.js"
   },
   "devDependencies": {

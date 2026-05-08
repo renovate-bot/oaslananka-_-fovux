@@ -5,7 +5,7 @@ Fovux Studio talks to the local `fovux-mcp` backend for dataset inspection, trai
 ## Steps
 
 1. Run `uv tool install fovux-mcp` in a terminal, or click the install button in this walkthrough.
-2. If `uv` is not available, use the fallback `pip install fovux-mcp`.
+2. If `uv` is not available, install it from the official Astral installer for your platform.
 3. Confirm the backend is available with `fovux-mcp --help`.
 
 ## Next Step

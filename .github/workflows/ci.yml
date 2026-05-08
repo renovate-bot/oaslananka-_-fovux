@@ -20,12 +20,14 @@ on:
 
 permissions:
   contents: read
-  checks: write
-  pull-requests: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
   ci:
@@ -38,7 +40,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-2022]
+        os: [ubuntu-24.04, macos-15, windows-2022]
         python-version: ["3.11", "3.12", "3.13"]
         node-version: ["22", "24.14.1"]
     runs-on: ${{ matrix.os }}
@@ -69,7 +71,7 @@ jobs:
 
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
         with:
-          go-version: "1.25.x"
+          go-version: "1.26.2"
           cache: false
 
       - name: Install Task
@@ -87,7 +89,9 @@ jobs:
       - name: Install pnpm
         if: hashFiles('fovux-studio/package.json') != ''
         run: |
-          npm install --global pnpm@10.33.0
+          set -euo pipefail
+          corepack enable
+          corepack prepare pnpm@10.33.0 --activate
           pnpm --version
 
       - name: Install dependencies
@@ -96,10 +100,14 @@ jobs:
       - name: Run CI
         run: task ci
 
-      - name: Publish test results
-        if: always() && runner.os == 'Linux' && hashFiles('**/junit.xml', '**/test-results.xml') != ''
-        uses: EnricoMi/publish-unit-test-result-action@c950f6fb443cb5af20a377fd0dfaa78838901040
-        with:
-          files: |
-            **/junit.xml
-            **/test-results.xml
+  ci-required:
+    name: ci-required
+    needs: ci
+    if: github.repository == 'oaslananka-lab/fovux'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Confirm CI matrix passed
+        run: |
+          set -euo pipefail
+          echo "CI matrix passed."
