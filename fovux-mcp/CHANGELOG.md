@@ -5,6 +5,18 @@ All notable changes to `fovux-mcp` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [4.1.5](https://github.com/oaslananka-lab/fovux/compare/fovux-mcp-v4.1.4...fovux-mcp-v4.1.5) (2026-05-08)
+
+
+### Bug Fixes
+
+* correct cwd path for smoke tests ([6eeb2c3](https://github.com/oaslananka-lab/fovux/commit/6eeb2c3cc74050bfc42a1ed5a0c1a340cae70f3c))
+* **dataset:** avoid recursive root scans in format detection ([e58833a](https://github.com/oaslananka-lab/fovux/commit/e58833a95d5f204c54870ac016b1b8a421216654))
+* keep docker image buildable on slim base ([07cda6c](https://github.com/oaslananka-lab/fovux/commit/07cda6c27b3e6080a24a614f2768fce4bf49315c))
+* **release:** align grouped release automation ([dd310b3](https://github.com/oaslananka-lab/fovux/commit/dd310b37b8bcd48d63b942e85d8ee625bf47cc23))
+* **release:** keep uv lock version synced ([dcbc8d2](https://github.com/oaslananka-lab/fovux/commit/dcbc8d2cf82fc921b802acdb18ebf1e85739561c))
+* resolve ruff and eslint errors failing the CI ([edfd82b](https://github.com/oaslananka-lab/fovux/commit/edfd82b4fb4da324a316e49e47a982e8aebc6da7))
+
 ## [4.1.4] - 2026-04-29
 
 ### Changed
