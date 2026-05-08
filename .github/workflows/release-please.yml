@@ -54,7 +54,7 @@ jobs:
           branches="$(
             {
               jq -r '.[] | .headBranchName // .headRefName // .head_branch // empty' <<<"$RELEASE_PULL_REQUESTS"
-              gh pr list --state open --json headRefName \
+              gh pr list --repo "$GITHUB_REPOSITORY" --state open --json headRefName \
                 --jq '.[] | select(.headRefName | startswith("release-please--branches--")) | .headRefName'
             } | sort -u
           )"
@@ -67,7 +67,7 @@ jobs:
           while IFS= read -r branch; do
             [[ -z "$branch" ]] && continue
             for workflow in ci.yml security.yml codeql.yml scorecard.yml release-please.yml; do
-              gh workflow run "$workflow" --ref "$branch"
+              gh workflow run "$workflow" --repo "$GITHUB_REPOSITORY" --ref "$branch"
             done
           done <<<"$branches"
 
