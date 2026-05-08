@@ -21,6 +21,7 @@ defaults:
 
 jobs:
   release-please:
+    name: release-please-main
     if: github.repository == 'oaslananka-lab/fovux' && github.event_name == 'push'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
