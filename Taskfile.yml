@@ -86,6 +86,7 @@ tasks:
   ci:
     desc: Run the exact CI pipeline locally - full parity
     cmds:
+      - task: install
       - task: lint
       - task: typecheck
       - task: test:cov
