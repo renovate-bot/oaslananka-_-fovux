@@ -4,6 +4,13 @@ All notable changes to `fovux-studio` are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.1.7](https://github.com/oaslananka-lab/fovux/compare/fovux-studio-v4.1.6...fovux-studio-v4.1.7) (2026-05-09)
+
+
+### Bug Fixes
+
+* **release:** document package distribution pipeline ([#20](https://github.com/oaslananka-lab/fovux/issues/20)) ([36e6d84](https://github.com/oaslananka-lab/fovux/commit/36e6d848b93a5d45aa3ff67e89f14c8f25b9b1c6))
+
 ## [4.1.6](https://github.com/oaslananka-lab/fovux/compare/fovux-studio-v4.1.5...fovux-studio-v4.1.6) (2026-05-09)
 
 

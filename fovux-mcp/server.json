@@ -6,14 +6,14 @@
     "url": "https://github.com/oaslananka/fovux",
     "source": "github"
   },
-  "version": "4.1.6",
+  "version": "4.1.7",
   "websiteUrl": "https://oaslananka.github.io/fovux/",
   "packages": [
     {
       "registry_type": "pypi",
       "registry_base_url": "https://pypi.org",
       "identifier": "fovux-mcp",
-      "version": "4.1.6",
+      "version": "4.1.7",
       "transport": {
         "type": "stdio"
       }
