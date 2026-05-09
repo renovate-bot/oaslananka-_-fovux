@@ -326,6 +326,21 @@ def test_procfs_snapshot_parses_stat_cmdline_and_group() -> None:
     assert snapshot["process_group_id"] == 456
 
 
+def test_procfs_snapshot_preserves_intentional_empty_command_arguments() -> None:
+    """Procfs command parsing should drop only the trailing NUL terminator."""
+    stat_tail = " ".join(["S", *["0"] * 18, "start-token", "0"])
+    with (
+        patch("fovux.core.processes.Path.exists", return_value=True),
+        patch("fovux.core.processes.Path.read_text", return_value=f"123 (python) {stat_tail}"),
+        patch("fovux.core.processes.Path.read_bytes", return_value=b"python\0\0worker\0\0"),
+        patch("fovux.core.processes.os.readlink", return_value=str(Path.cwd())),
+        patch("fovux.core.processes.os.getpgid", return_value=456, create=True),
+    ):
+        snapshot = _snapshot_process_procfs(123)
+
+    assert snapshot["command"] == ["python", "", "worker", ""]
+
+
 def test_procfs_snapshot_handles_parse_errors() -> None:
     """Procfs read failures should be treated as missing process metadata."""
     with (

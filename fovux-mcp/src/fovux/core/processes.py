@@ -228,7 +228,10 @@ def _snapshot_process_procfs(pid: int) -> dict[str, object]:
         after_comm = stat[stat.rfind(")") + 2 :].split()
         start_marker = after_comm[19] if len(after_comm) > 19 else None
         raw_cmd = (proc_dir / "cmdline").read_bytes()
-        command = [part.decode("utf-8", errors="replace") for part in raw_cmd.split(b"\0") if part]
+        command_parts = raw_cmd.split(b"\0")
+        if command_parts and command_parts[-1] == b"":
+            command_parts = command_parts[:-1]
+        command = [part.decode("utf-8", errors="replace") for part in command_parts]
         cwd = os.readlink(proc_dir / "cwd")
         getpgid = getattr(os, "getpgid", None)
         process_group_id = getpgid(pid) if callable(getpgid) else None
