@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from errno import ESRCH
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -16,12 +17,17 @@ from fovux.core.processes import (
     ProcessIdentity,
     ProcessSnapshotError,
     _as_int,
+    _kill_process_group,
+    _process_group_exists,
+    _process_group_has_live_darwin_member,
+    _process_group_has_live_procfs_member,
     _snapshot_process,
     _snapshot_process_darwin,
     _snapshot_process_darwin_cwd,
     _snapshot_process_procfs,
     _snapshot_process_windows,
     _wait_for_exit,
+    _wait_for_process_group_exit,
     _windows_command_parts,
     capture_process_identity,
     command_fingerprint,
@@ -205,12 +211,14 @@ def test_terminate_process_tree_sends_posix_process_group_signal() -> None:
     with (
         patch("fovux.core.processes.sys.platform", "linux"),
         patch("fovux.core.processes._snapshot_process", side_effect=[_snapshot(), {}]),
-        patch("fovux.core.processes._wait_for_exit"),
+        patch("fovux.core.processes._wait_for_process_group_exit") as wait_group,
+        patch("fovux.core.processes._process_group_exists", return_value=False),
         patch("fovux.core.processes.os.killpg", create=True) as killpg,
     ):
         result = terminate_process_tree(_identity(), force=False)
 
     killpg.assert_called_once()
+    wait_group.assert_called_once_with(456, 5.0)
     assert result.status == "terminated"
     assert result.signal_sent is True
 
@@ -227,7 +235,10 @@ def test_terminate_process_tree_sends_posix_pid_signal_without_group() -> None:
     )
     with (
         patch("fovux.core.processes.sys.platform", "linux"),
-        patch("fovux.core.processes._snapshot_process", side_effect=[_snapshot(), _snapshot()]),
+        patch(
+            "fovux.core.processes._snapshot_process",
+            side_effect=[_snapshot(), _snapshot(), _snapshot(), {}],
+        ),
         patch("fovux.core.processes._wait_for_exit"),
         patch("fovux.core.processes.os.kill") as kill,
     ):
@@ -237,20 +248,80 @@ def test_terminate_process_tree_sends_posix_pid_signal_without_group() -> None:
     assert result.status == "terminated"
 
 
-def test_terminate_process_tree_reverifies_before_final_kill() -> None:
-    """A changed identity after SIGTERM should prevent the SIGKILL fallback."""
+def test_terminate_process_tree_reverifies_pid_before_final_kill() -> None:
+    """A changed PID identity after SIGTERM should prevent the SIGKILL fallback."""
+    identity = ProcessIdentity(
+        pid=123,
+        command_fingerprint=command_fingerprint(["python", "-m", "fovux.core.train_worker", "run"]),
+        cwd=str(Path.cwd()),
+        start_marker="start-1",
+        process_group_id=None,
+        platform="linux",
+    )
+    stale_snapshot = {**_snapshot(), "start_marker": "reused"}
+    with (
+        patch("fovux.core.processes.sys.platform", "linux"),
+        patch(
+            "fovux.core.processes._snapshot_process",
+            side_effect=[_snapshot(), _snapshot(), stale_snapshot],
+        ),
+        patch("fovux.core.processes._wait_for_exit"),
+        patch("fovux.core.processes.os.kill") as kill,
+    ):
+        result = terminate_process_tree(identity, force=False)
+
+    assert kill.call_count == 1
+    assert result.status == "mismatch"
+    assert result.signal_sent is True
+
+
+def test_terminate_process_tree_kills_live_group_when_leader_pid_is_reused() -> None:
+    """A recycled leader PID should not prevent final SIGKILL for the recorded group."""
     stale_snapshot = {**_snapshot(), "start_marker": "reused"}
     with (
         patch("fovux.core.processes.sys.platform", "linux"),
         patch("fovux.core.processes._snapshot_process", side_effect=[_snapshot(), stale_snapshot]),
-        patch("fovux.core.processes._wait_for_exit"),
+        patch("fovux.core.processes._wait_for_process_group_exit") as wait_group,
+        patch("fovux.core.processes._process_group_exists", side_effect=[True, False]),
         patch("fovux.core.processes.os.killpg", create=True) as killpg,
     ):
         result = terminate_process_tree(_identity(), force=False)
 
-    assert killpg.call_count == 1
-    assert result.status == "mismatch"
+    assert killpg.call_count == 2
+    assert wait_group.call_count == 2
+    assert result.status == "terminated"
+
+
+def test_terminate_process_tree_kills_live_group_after_leader_exits() -> None:
+    """A surviving process group should still receive SIGKILL if its leader exits first."""
+    with (
+        patch("fovux.core.processes.sys.platform", "linux"),
+        patch("fovux.core.processes._snapshot_process", side_effect=[_snapshot(), {}]),
+        patch("fovux.core.processes._wait_for_process_group_exit") as wait_group,
+        patch("fovux.core.processes._process_group_exists", side_effect=[True, False]),
+        patch("fovux.core.processes.os.killpg", create=True) as killpg,
+    ):
+        result = terminate_process_tree(_identity(), force=False)
+
+    assert killpg.call_count == 2
+    assert wait_group.call_count == 2
+    assert result.status == "terminated"
+
+
+def test_terminate_process_tree_reports_group_timeout_after_final_kill() -> None:
+    """A process group that survives SIGKILL should be reported as a failed stop."""
+    with (
+        patch("fovux.core.processes.sys.platform", "linux"),
+        patch("fovux.core.processes._snapshot_process", return_value=_snapshot()),
+        patch("fovux.core.processes._wait_for_process_group_exit"),
+        patch("fovux.core.processes._process_group_exists", return_value=True),
+        patch("fovux.core.processes.os.killpg", create=True),
+    ):
+        result = terminate_process_tree(_identity(), force=True)
+
+    assert result.status == "failed"
     assert result.signal_sent is True
+    assert "Timed out" in result.message
 
 
 def test_terminate_process_tree_sends_windows_tree_signal() -> None:
@@ -455,11 +526,21 @@ def test_darwin_snapshot_uses_ps_and_lsof_metadata() -> None:
         stderr="",
     )
     with (
-        patch("fovux.core.processes.subprocess.run", side_effect=[ps_result, lsof_result]),
+        patch("fovux.core.processes.subprocess.run", side_effect=[ps_result, lsof_result]) as run,
         patch("fovux.core.processes.os.getpgid", return_value=456, create=True),
     ):
         snapshot = _snapshot_process_darwin(123)
 
+    assert run.call_args_list[0].args[0] == [
+        "/bin/ps",
+        "-p",
+        "123",
+        "-ww",
+        "-o",
+        "lstart=",
+        "-o",
+        "command=",
+    ]
     assert snapshot["start_marker"] == "Sat May  9 09:50:00 2026"
     assert snapshot["command"] == ["python", "-m", "fovux.core.train_worker", "run"]
     assert snapshot["cwd"] == str(Path.cwd())
@@ -531,6 +612,161 @@ def test_wait_for_exit_returns_on_missing_process_and_sleeps_until_deadline() ->
         _wait_for_exit(1, 0.1)
 
     sleep.assert_called_once_with(0.05)
+
+
+def test_wait_for_process_group_exit_returns_when_group_disappears() -> None:
+    """The process-group wait loop should stop as soon as the group is gone."""
+    with (
+        patch("fovux.core.processes._process_group_exists", side_effect=[True, False]),
+        patch("fovux.core.processes.time.sleep") as sleep,
+    ):
+        _wait_for_process_group_exit(456, 1.0)
+
+    sleep.assert_called_once_with(0.05)
+
+
+def test_process_group_exists_classifies_signal_probe_results() -> None:
+    """Signal-zero probes should distinguish missing groups from protected live groups."""
+    with patch("fovux.core.processes._kill_process_group") as kill_group:
+        assert _process_group_exists(456) is True
+    kill_group.assert_called_once_with(456, 0)
+
+    with patch("fovux.core.processes._kill_process_group", side_effect=ProcessLookupError):
+        assert _process_group_exists(456) is False
+
+    with patch("fovux.core.processes._kill_process_group", side_effect=PermissionError):
+        assert _process_group_exists(456) is True
+
+    with (
+        patch("fovux.core.processes._kill_process_group", side_effect=OSError(ESRCH, "gone")),
+    ):
+        assert _process_group_exists(456) is False
+
+    with patch("fovux.core.processes._kill_process_group", side_effect=OSError("busy")):
+        assert _process_group_exists(456) is True
+
+
+def test_process_group_exists_ignores_zombie_only_procfs_group(tmp_path: Path) -> None:
+    """A signalable Linux process group with only zombie members is no longer live."""
+    proc_dir = tmp_path / "123"
+    proc_dir.mkdir()
+    (proc_dir / "stat").write_text(
+        "123 (python) Z 1 456 456 0 0 0 0 0 0 0 0 0 0 20 0 1 0 123456 0 0",
+        encoding="utf-8",
+    )
+
+    with (
+        patch("fovux.core.processes.sys.platform", "linux"),
+        patch("fovux.core.processes._kill_process_group"),
+        patch("fovux.core.processes.Path", return_value=tmp_path),
+    ):
+        assert _process_group_exists(456) is False
+
+
+def test_process_group_procfs_member_scan_detects_live_member(tmp_path: Path) -> None:
+    """The procfs group scan treats at least one non-zombie member as live."""
+    proc_dir = tmp_path / "124"
+    proc_dir.mkdir()
+    (proc_dir / "stat").write_text(
+        "124 (python) S 1 456 456 0 0 0 0 0 0 0 0 0 0 20 0 1 0 123457 0 0",
+        encoding="utf-8",
+    )
+
+    with patch("fovux.core.processes.sys.platform", "linux"):
+        assert _process_group_has_live_procfs_member(456, tmp_path) is True
+
+
+def test_process_group_procfs_member_scan_handles_unknown_state(tmp_path: Path) -> None:
+    """The procfs group scan should fall back when platform or readable state is unknown."""
+    with patch("fovux.core.processes.sys.platform", "win32"):
+        assert _process_group_has_live_procfs_member(456, tmp_path) is None
+
+    with patch("fovux.core.processes.sys.platform", "linux"):
+        assert _process_group_has_live_procfs_member(456, tmp_path / "missing") is None
+
+    unreadable_root = MagicMock()
+    unreadable_root.exists.return_value = True
+    unreadable_root.iterdir.side_effect = OSError("hidden proc")
+    with patch("fovux.core.processes.sys.platform", "linux"):
+        assert _process_group_has_live_procfs_member(456, unreadable_root) is None
+
+    (tmp_path / "not-a-pid").mkdir()
+    invalid_proc = tmp_path / "125"
+    invalid_proc.mkdir()
+    (invalid_proc / "stat").write_text("invalid", encoding="utf-8")
+    other_group = tmp_path / "126"
+    other_group.mkdir()
+    (other_group / "stat").write_text(
+        "126 (python) S 1 999 999 0 0 0 0 0 0 0 0 0 0 20 0 1 0 123458 0 0",
+        encoding="utf-8",
+    )
+    with patch("fovux.core.processes.sys.platform", "linux"):
+        assert _process_group_has_live_procfs_member(456, tmp_path) is None
+
+
+def test_process_group_exists_ignores_darwin_zombie_only_group() -> None:
+    """A signalable macOS process group with only zombie members is no longer live."""
+    completed = subprocess.CompletedProcess(
+        args=[],
+        returncode=0,
+        stdout="Z 456\nS 999\n",
+        stderr="",
+    )
+    with (
+        patch("fovux.core.processes.sys.platform", "darwin"),
+        patch("fovux.core.processes._kill_process_group"),
+        patch("fovux.core.processes.subprocess.run", return_value=completed),
+    ):
+        assert _process_group_exists(456) is False
+
+
+def test_process_group_darwin_member_scan_detects_live_member() -> None:
+    """The macOS group scan treats at least one non-zombie member as live."""
+    completed = subprocess.CompletedProcess(
+        args=[],
+        returncode=0,
+        stdout="Z 456\nS 456\n",
+        stderr="",
+    )
+    with (
+        patch("fovux.core.processes.sys.platform", "darwin"),
+        patch("fovux.core.processes.subprocess.run", return_value=completed),
+    ):
+        assert _process_group_has_live_darwin_member(456) is True
+
+
+def test_process_group_darwin_member_scan_handles_unknown_state() -> None:
+    """The macOS group scan should fall back when ps output is unavailable."""
+    with patch("fovux.core.processes.sys.platform", "linux"):
+        assert _process_group_has_live_darwin_member(456) is None
+
+    failed = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="ps failed")
+    with (
+        patch("fovux.core.processes.sys.platform", "darwin"),
+        patch("fovux.core.processes.subprocess.run", return_value=failed),
+    ):
+        assert _process_group_has_live_darwin_member(456) is None
+
+    malformed = subprocess.CompletedProcess(
+        args=[],
+        returncode=0,
+        stdout="not-enough\nS nope\n",
+        stderr="",
+    )
+    with (
+        patch("fovux.core.processes.sys.platform", "darwin"),
+        patch("fovux.core.processes.subprocess.run", return_value=malformed),
+    ):
+        assert _process_group_has_live_darwin_member(456) is None
+
+
+def test_kill_process_group_fails_when_platform_has_no_group_signal() -> None:
+    """Unsupported process-group signaling should fail explicitly."""
+    with (
+        patch("fovux.core.processes.os.killpg", new=None, create=True),
+        pytest.raises(OSError, match="process group signalling"),
+    ):
+        _kill_process_group(456, 0)
 
 
 def test_windows_command_parts_and_int_coercion() -> None:

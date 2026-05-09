@@ -20,6 +20,9 @@ def find_images(root: Path, max_count: int | None = None) -> list[Path]:
     Returns:
         Sorted list of image Paths.
     """
+    if root == root.parent:
+        return []
+
     images: list[Path] = []
     for p in root.rglob("*"):
         if p.suffix.lower() in IMAGE_EXTENSIONS and p.is_file():

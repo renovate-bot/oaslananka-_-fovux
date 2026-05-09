@@ -19,7 +19,12 @@ from fovux.core.errors import (
 )
 from fovux.core.json_io import write_json_atomically
 from fovux.core.paths import FovuxPaths, get_fovux_home
-from fovux.core.processes import capture_process_identity, process_identity_payload
+from fovux.core.processes import (
+    ProcessIdentity,
+    capture_process_identity,
+    process_identity_payload,
+    terminate_process_tree,
+)
 from fovux.core.runs import get_registry
 from fovux.core.tooling import tool_event
 from fovux.core.validation import ensure_within_root, validate_run_id
@@ -162,6 +167,8 @@ def _run_train_start(inp: TrainStartInput) -> TrainStartOutput:
         registry.update_status(run_id, "failed")
         raise FovuxTrainingSubprocessError(str(exc)) from exc
 
+    identity: ProcessIdentity | None = None
+    cleanup_failure: str | None = None
     try:
         identity = capture_process_identity(pid=proc.pid, command=command, cwd=Path.cwd())
         write_json_atomically(
@@ -170,12 +177,26 @@ def _run_train_start(inp: TrainStartInput) -> TrainStartOutput:
         )
         registry.update_status(run_id, "running", pid=proc.pid)
     except Exception as exc:
-        if proc.poll() is None:
-            with suppress(OSError, ProcessLookupError, PermissionError):
+        if identity is not None:
+            try:
+                result = terminate_process_tree(identity, force=True)
+            except Exception as term_exc:
+                cleanup_failure = str(term_exc)
+            else:
+                if result.status not in {"terminated", "missing"}:
+                    cleanup_failure = result.message
+            if cleanup_failure and proc.poll() is None:
+                with suppress(OSError):
+                    proc.terminate()
+        elif proc.poll() is None:
+            with suppress(OSError):
                 proc.terminate()
         with suppress(Exception):
             registry.update_status(run_id, "failed", pid=proc.pid)
-        raise FovuxTrainingSubprocessError(str(exc)) from exc
+        message = str(exc)
+        if cleanup_failure:
+            message = f"{message}; cleanup failed: {cleanup_failure}"
+        raise FovuxTrainingSubprocessError(message) from exc
 
     return TrainStartOutput(
         run_id=run_id,

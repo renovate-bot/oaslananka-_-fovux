@@ -81,6 +81,7 @@ def fake_train_start_process_identity(monkeypatch: pytest.MonkeyPatch) -> None:
         )
 
     monkeypatch.setattr("fovux.tools.train_start.capture_process_identity", capture)
+    monkeypatch.setattr("fovux.tools.train_resume.capture_process_identity", capture)
 
 
 # ──────────────────────────────────────────────
@@ -240,6 +241,94 @@ def test_train_start_terminates_worker_when_bookkeeping_fails(fake_fovux_home):
 
     proc.terminate.assert_called_once()
     record = get_registry(FovuxPaths(fake_fovux_home).runs_db).get_run("bad_meta")
+    assert record is not None
+    assert record.status == "failed"
+
+
+def test_train_start_terminates_worker_group_after_identity_capture(fake_fovux_home):
+    """Post-identity bookkeeping failures should clean up the isolated worker group."""
+    proc = _fake_popen(pid=4569)
+
+    def fail_pid_write(path: Path, payload: object) -> None:
+        if path.name == "pid.txt":
+            raise RuntimeError("pid write failed")
+
+    with (
+        patch("fovux.tools.train_start.subprocess.Popen", return_value=proc),
+        patch("fovux.tools.train_start.write_json_atomically", side_effect=fail_pid_write),
+        patch("fovux.tools.train_start.terminate_process_tree") as terminate,
+        pytest.raises(FovuxTrainingSubprocessError, match="pid write failed"),
+    ):
+        terminate.return_value = TerminationResult(
+            status="terminated",
+            signal_sent=True,
+            message="stopped",
+        )
+        _run_train_start(TrainStartInput(dataset_path=FIXTURES / "mini_yolo", name="bad_pid_write"))
+
+    terminate.assert_called_once()
+    identity = terminate.call_args.args[0]
+    assert isinstance(identity, ProcessIdentity)
+    assert identity.pid == 4569
+    assert terminate.call_args.kwargs == {"force": True}
+    proc.terminate.assert_not_called()
+    record = get_registry(FovuxPaths(fake_fovux_home).runs_db).get_run("bad_pid_write")
+    assert record is not None
+    assert record.status == "failed"
+
+
+def test_train_start_reports_worker_group_cleanup_failure(fake_fovux_home):
+    """Failed post-identity cleanup should be visible and fall back to leader termination."""
+    proc = _fake_popen(pid=4570)
+
+    def fail_pid_write(path: Path, payload: object) -> None:
+        if path.name == "pid.txt":
+            raise RuntimeError("pid write failed")
+
+    with (
+        patch("fovux.tools.train_start.subprocess.Popen", return_value=proc),
+        patch("fovux.tools.train_start.write_json_atomically", side_effect=fail_pid_write),
+        patch("fovux.tools.train_start.terminate_process_tree") as terminate,
+        pytest.raises(FovuxTrainingSubprocessError, match="cleanup failed: still alive"),
+    ):
+        terminate.return_value = TerminationResult(
+            status="failed",
+            signal_sent=True,
+            message="still alive",
+        )
+        _run_train_start(TrainStartInput(dataset_path=FIXTURES / "mini_yolo", name="bad_cleanup"))
+
+    terminate.assert_called_once()
+    proc.terminate.assert_called_once()
+    record = get_registry(FovuxPaths(fake_fovux_home).runs_db).get_run("bad_cleanup")
+    assert record is not None
+    assert record.status == "failed"
+
+
+def test_train_start_reports_worker_group_cleanup_exception(fake_fovux_home):
+    """Cleanup exceptions should not disappear behind the original bookkeeping failure."""
+    proc = _fake_popen(pid=4571)
+
+    def fail_pid_write(path: Path, payload: object) -> None:
+        if path.name == "pid.txt":
+            raise RuntimeError("pid write failed")
+
+    with (
+        patch("fovux.tools.train_start.subprocess.Popen", return_value=proc),
+        patch("fovux.tools.train_start.write_json_atomically", side_effect=fail_pid_write),
+        patch(
+            "fovux.tools.train_start.terminate_process_tree",
+            side_effect=RuntimeError("cleanup boom"),
+        ) as terminate,
+        pytest.raises(FovuxTrainingSubprocessError, match="cleanup failed: cleanup boom"),
+    ):
+        _run_train_start(
+            TrainStartInput(dataset_path=FIXTURES / "mini_yolo", name="cleanup_exception")
+        )
+
+    terminate.assert_called_once()
+    proc.terminate.assert_called_once()
+    record = get_registry(FovuxPaths(fake_fovux_home).runs_db).get_run("cleanup_exception")
     assert record is not None
     assert record.status == "failed"
 
@@ -561,14 +650,160 @@ def test_train_resume_updates_params_and_status(fake_fovux_home):
     last_pt.parent.mkdir(parents=True, exist_ok=True)
     last_pt.write_bytes(b"weights")
 
-    with patch("fovux.tools.train_resume.subprocess.Popen", return_value=_fake_popen(pid=22222)):
+    with (
+        patch("fovux.tools.train_resume.sys.platform", "linux"),
+        patch(
+            "fovux.tools.train_resume.subprocess.Popen", return_value=_fake_popen(pid=22222)
+        ) as popen,
+    ):
         resume_out = _run_train_resume(TrainResumeInput(run_id=start_out.run_id, epochs=9))
 
     params = json.loads((start_out.run_path / "params.json").read_text())
+    pid_payload = json.loads((start_out.run_path / "pid.txt").read_text(encoding="utf-8"))
     assert resume_out.status == "running"
     assert resume_out.pid == 22222
+    assert popen.call_args.kwargs["start_new_session"] is True
+    assert pid_payload["pid"] == 22222
+    assert pid_payload["process"]["pid"] == 22222
     assert params["resume_checkpoint"] == str(last_pt)
     assert params["epochs"] == 9
+
+
+def test_train_resume_uses_windows_process_group(fake_fovux_home):
+    """Windows resumed workers should be isolated in their own process group."""
+    with patch("fovux.tools.train_start.subprocess.Popen", return_value=_fake_popen(pid=11111)):
+        start_out = _run_train_start(TrainStartInput(dataset_path=FIXTURES / "mini_yolo"))
+
+    with (
+        patch("fovux.tools.train_resume.sys.platform", "win32"),
+        patch(
+            "fovux.tools.train_resume.subprocess.CREATE_NEW_PROCESS_GROUP",
+            512,
+            create=True,
+        ),
+        patch(
+            "fovux.tools.train_resume.subprocess.Popen", return_value=_fake_popen(pid=44444)
+        ) as popen,
+    ):
+        _run_train_resume(TrainResumeInput(run_id=start_out.run_id))
+
+    assert popen.call_args.kwargs["creationflags"] == 512
+
+
+def test_train_resume_marks_failed_when_spawn_fails(fake_fovux_home):
+    """Resume spawn failures should leave a failed registry row."""
+    paths = FovuxPaths(fake_fovux_home)
+    with patch("fovux.tools.train_start.subprocess.Popen", return_value=_fake_popen(pid=11111)):
+        start_out = _run_train_start(
+            TrainStartInput(dataset_path=FIXTURES / "mini_yolo", name="resume_spawn_failure")
+        )
+
+    with (
+        patch("fovux.tools.train_resume.subprocess.Popen", side_effect=OSError("python missing")),
+        pytest.raises(FovuxTrainingSubprocessError, match="python missing"),
+    ):
+        _run_train_resume(TrainResumeInput(run_id=start_out.run_id))
+
+    record = get_registry(paths.runs_db).get_run(start_out.run_id)
+    assert record is not None
+    assert record.status == "failed"
+
+
+def test_train_resume_terminates_worker_when_bookkeeping_fails(fake_fovux_home):
+    """Resume metadata failures should not leave a detached worker running."""
+    paths = FovuxPaths(fake_fovux_home)
+    with patch("fovux.tools.train_start.subprocess.Popen", return_value=_fake_popen(pid=11111)):
+        start_out = _run_train_start(
+            TrainStartInput(dataset_path=FIXTURES / "mini_yolo", name="resume_bad_meta")
+        )
+
+    proc = _fake_popen(pid=55555)
+    with (
+        patch("fovux.tools.train_resume.subprocess.Popen", return_value=proc),
+        patch(
+            "fovux.tools.train_resume.capture_process_identity",
+            side_effect=RuntimeError("snapshot failed"),
+        ),
+        pytest.raises(FovuxTrainingSubprocessError, match="snapshot failed"),
+    ):
+        _run_train_resume(TrainResumeInput(run_id=start_out.run_id))
+
+    proc.terminate.assert_called_once()
+    record = get_registry(paths.runs_db).get_run(start_out.run_id)
+    assert record is not None
+    assert record.status == "failed"
+
+
+def test_train_resume_terminates_worker_group_after_identity_capture(fake_fovux_home):
+    """Resume post-identity failures should clean up the isolated worker group."""
+    paths = FovuxPaths(fake_fovux_home)
+    with patch("fovux.tools.train_start.subprocess.Popen", return_value=_fake_popen(pid=11111)):
+        start_out = _run_train_start(
+            TrainStartInput(dataset_path=FIXTURES / "mini_yolo", name="resume_bad_pid_write")
+        )
+
+    proc = _fake_popen(pid=55556)
+
+    def fail_pid_write(path: Path, payload: object) -> None:
+        if path.name == "pid.txt":
+            raise RuntimeError("pid write failed")
+
+    with (
+        patch("fovux.tools.train_resume.subprocess.Popen", return_value=proc),
+        patch("fovux.tools.train_resume.write_json_atomically", side_effect=fail_pid_write),
+        patch("fovux.tools.train_resume.terminate_process_tree") as terminate,
+        pytest.raises(FovuxTrainingSubprocessError, match="pid write failed"),
+    ):
+        terminate.return_value = TerminationResult(
+            status="terminated",
+            signal_sent=True,
+            message="stopped",
+        )
+        _run_train_resume(TrainResumeInput(run_id=start_out.run_id))
+
+    terminate.assert_called_once()
+    identity = terminate.call_args.args[0]
+    assert isinstance(identity, ProcessIdentity)
+    assert identity.pid == 55556
+    assert terminate.call_args.kwargs == {"force": True}
+    proc.terminate.assert_not_called()
+    record = get_registry(paths.runs_db).get_run(start_out.run_id)
+    assert record is not None
+    assert record.status == "failed"
+
+
+def test_train_resume_reports_worker_group_cleanup_failure(fake_fovux_home):
+    """Resume cleanup failures should be visible and fall back to leader termination."""
+    paths = FovuxPaths(fake_fovux_home)
+    with patch("fovux.tools.train_start.subprocess.Popen", return_value=_fake_popen(pid=11111)):
+        start_out = _run_train_start(
+            TrainStartInput(dataset_path=FIXTURES / "mini_yolo", name="resume_bad_cleanup")
+        )
+
+    proc = _fake_popen(pid=55557)
+
+    def fail_pid_write(path: Path, payload: object) -> None:
+        if path.name == "pid.txt":
+            raise RuntimeError("pid write failed")
+
+    with (
+        patch("fovux.tools.train_resume.subprocess.Popen", return_value=proc),
+        patch("fovux.tools.train_resume.write_json_atomically", side_effect=fail_pid_write),
+        patch("fovux.tools.train_resume.terminate_process_tree") as terminate,
+        pytest.raises(FovuxTrainingSubprocessError, match="cleanup failed: still alive"),
+    ):
+        terminate.return_value = TerminationResult(
+            status="failed",
+            signal_sent=True,
+            message="still alive",
+        )
+        _run_train_resume(TrainResumeInput(run_id=start_out.run_id))
+
+    terminate.assert_called_once()
+    proc.terminate.assert_called_once()
+    record = get_registry(paths.runs_db).get_run(start_out.run_id)
+    assert record is not None
+    assert record.status == "failed"
 
 
 def test_train_resume_falls_back_when_last_checkpoint_is_missing(fake_fovux_home):

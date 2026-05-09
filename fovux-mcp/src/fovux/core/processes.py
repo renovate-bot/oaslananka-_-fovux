@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+import errno
 import hashlib
 import json
 import os
@@ -134,27 +135,31 @@ def terminate_process_tree(
         else:
             kill_signal = getattr(signal, "SIGKILL", signal.SIGTERM)
             sig = kill_signal if force else signal.SIGTERM
-            if identity.process_group_id is not None:
-                os.killpg(identity.process_group_id, sig)
-            else:
-                os.kill(identity.pid, sig)
-            _wait_for_exit(identity.pid, timeout_seconds)
+            _send_posix_signal(identity, sig)
+            _wait_for_posix_target_exit(identity, timeout_seconds)
+            target_still_alive = _posix_target_exists(identity)
             latest_snapshot = _snapshot_process(identity.pid)
-            if force is False and latest_snapshot:
-                latest_mismatch = _identity_mismatch(identity, latest_snapshot)
-                if latest_mismatch is not None:
-                    return TerminationResult(
-                        status="mismatch",
-                        signal_sent=True,
-                        message=(
-                            "Worker identity changed after graceful termination signal; "
-                            f"final kill was not sent: {latest_mismatch}."
-                        ),
-                    )
-                if identity.process_group_id is not None:
-                    os.killpg(identity.process_group_id, kill_signal)
-                else:
-                    os.kill(identity.pid, kill_signal)
+            if force is False and target_still_alive:
+                if identity.process_group_id is None and latest_snapshot:
+                    latest_mismatch = _identity_mismatch(identity, latest_snapshot)
+                    if latest_mismatch is not None:
+                        return TerminationResult(
+                            status="mismatch",
+                            signal_sent=True,
+                            message=(
+                                "Worker identity changed after graceful termination signal; "
+                                f"final kill was not sent: {latest_mismatch}."
+                            ),
+                        )
+                _send_posix_signal(identity, kill_signal)
+                _wait_for_posix_target_exit(identity, timeout_seconds)
+                target_still_alive = _posix_target_exists(identity)
+            if target_still_alive:
+                return TerminationResult(
+                    status="failed",
+                    signal_sent=True,
+                    message=f"Timed out waiting for verified worker PID {identity.pid} to exit.",
+                )
         return TerminationResult(
             status="terminated",
             signal_sent=True,
@@ -229,6 +234,105 @@ def _terminate_windows_process_tree(identity: ProcessIdentity, *, force: bool) -
     )
 
 
+def _send_posix_signal(identity: ProcessIdentity, sig: signal.Signals | int) -> None:
+    if identity.process_group_id is not None:
+        _kill_process_group(identity.process_group_id, sig)
+    else:
+        os.kill(identity.pid, sig)
+
+
+def _wait_for_posix_target_exit(identity: ProcessIdentity, timeout_seconds: float) -> None:
+    if identity.process_group_id is not None:
+        _wait_for_process_group_exit(identity.process_group_id, timeout_seconds)
+    else:
+        _wait_for_exit(identity.pid, timeout_seconds)
+
+
+def _posix_target_exists(identity: ProcessIdentity) -> bool:
+    if identity.process_group_id is not None:
+        return _process_group_exists(identity.process_group_id)
+    return bool(_snapshot_process(identity.pid))
+
+
+def _process_group_has_live_procfs_member(
+    process_group_id: int,
+    proc_root: Path | None = None,
+) -> bool | None:
+    if sys.platform != "linux":
+        return None
+    root = proc_root or Path("/proc")
+    if not root.exists():
+        return None
+    try:
+        proc_dirs = list(root.iterdir())
+    except OSError:
+        return None
+
+    saw_group_member = False
+    for proc_dir in proc_dirs:
+        if not proc_dir.name.isdecimal():
+            continue
+        try:
+            stat = (proc_dir / "stat").read_text(encoding="utf-8")
+            after_comm = stat[stat.rfind(")") + 2 :].split()
+            state = after_comm[0]
+            group_id = int(after_comm[2])
+        except (IndexError, OSError, ValueError):
+            continue
+        if group_id != process_group_id:
+            continue
+        saw_group_member = True
+        if state != "Z":
+            return True
+
+    if saw_group_member:
+        return False
+    return None
+
+
+def _process_group_has_live_darwin_member(process_group_id: int) -> bool | None:
+    if sys.platform != "darwin":
+        return None
+    try:
+        result = subprocess.run(  # noqa: S603
+            ["/bin/ps", "-axo", "stat=,pgid="],
+            capture_output=True,
+            check=False,
+            encoding="utf-8",
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+
+    saw_group_member = False
+    for line in result.stdout.splitlines():
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        try:
+            group_id = int(parts[-1])
+        except ValueError:
+            continue
+        if group_id != process_group_id:
+            continue
+        saw_group_member = True
+        if not parts[0].startswith("Z"):
+            return True
+
+    if saw_group_member:
+        return False
+    return None
+
+
+def _process_group_has_live_platform_member(process_group_id: int) -> bool | None:
+    live_member = _process_group_has_live_procfs_member(process_group_id)
+    if live_member is not None:
+        return live_member
+    return _process_group_has_live_darwin_member(process_group_id)
+
+
 def _snapshot_process(pid: int) -> dict[str, object]:
     if sys.platform == "win32":
         return _snapshot_process_windows(pid)
@@ -267,7 +371,7 @@ def _snapshot_process_procfs(pid: int) -> dict[str, object]:
 def _snapshot_process_darwin(pid: int) -> dict[str, object]:
     try:
         result = subprocess.run(  # noqa: S603
-            ["/bin/ps", "-p", str(pid), "-o", "lstart=", "-o", "command="],
+            ["/bin/ps", "-p", str(pid), "-ww", "-o", "lstart=", "-o", "command="],
             capture_output=True,
             check=False,
             encoding="utf-8",
@@ -391,6 +495,37 @@ def _wait_for_exit(pid: int, timeout_seconds: float) -> None:
         if not _snapshot_process(pid):
             return
         time.sleep(0.05)
+
+
+def _wait_for_process_group_exit(process_group_id: int, timeout_seconds: float) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        if not _process_group_exists(process_group_id):
+            return
+        time.sleep(0.05)
+
+
+def _process_group_exists(process_group_id: int) -> bool:
+    try:
+        _kill_process_group(process_group_id, 0)
+    except PermissionError:
+        live_member = _process_group_has_live_platform_member(process_group_id)
+        return True if live_member is None else live_member
+    except OSError as exc:
+        if isinstance(exc, ProcessLookupError) or exc.errno == errno.ESRCH:
+            return False
+        return True
+    live_member = _process_group_has_live_platform_member(process_group_id)
+    if live_member is not None:
+        return live_member
+    return True
+
+
+def _kill_process_group(process_group_id: int, sig: signal.Signals | int) -> None:
+    killpg = getattr(os, "killpg", None)
+    if not callable(killpg):
+        raise OSError("process group signalling is not supported on this platform")
+    killpg(process_group_id, sig)
 
 
 def _as_int(value: object) -> int | None:

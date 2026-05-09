@@ -163,6 +163,10 @@ markers = [
     "benchmark: marks performance benchmarks",
     "security: marks security/pentest related tests",
 ]
+filterwarnings = [
+    "ignore:Palette images with Transparency expressed in bytes should be converted to RGBA images:UserWarning:PIL.Image",
+    "ignore:'fovux.core.train_worker' found in sys.modules after import of package 'fovux.core', but prior to execution of 'fovux.core.train_worker'; this may result in unpredictable behaviour:RuntimeWarning:runpy",
+]
 
 [tool.coverage.run]
 source = ["src/fovux"]
