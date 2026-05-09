@@ -182,13 +182,17 @@ jobs:
         working-directory: fovux-mcp
         env:
           PYPI_TRUSTED_PUBLISHING_ENABLED: ${{ vars.PYPI_TRUSTED_PUBLISHING_ENABLED }}
+          PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
         run: |
           set -euo pipefail
-          if [[ "$PYPI_TRUSTED_PUBLISHING_ENABLED" != "true" ]]; then
-            echo "::notice::Skipping PyPI publish until PYPI_TRUSTED_PUBLISHING_ENABLED is true and the PyPI trusted publisher matches this workflow."
-            exit 0
+          if [[ "$PYPI_TRUSTED_PUBLISHING_ENABLED" == "true" ]]; then
+            uv publish dist/*
+          elif [[ -n "${PYPI_TOKEN:-}" ]]; then
+            uv publish --token "$PYPI_TOKEN" dist/*
+          else
+            echo "::error::PyPI trusted publishing or PYPI_TOKEN is required for a release."
+            exit 1
           fi
-          uv publish dist/*
 
       - name: Verify Python release
         env:

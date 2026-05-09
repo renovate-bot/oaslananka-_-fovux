@@ -10,6 +10,19 @@ import tempfile
 from pathlib import Path
 
 FENCE_RE = re.compile(r"```(?P<lang>python|bash|sh)\n(?P<body>.*?)```", re.DOTALL)
+SKIP_PARTS = {
+    ".git",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
+    "build",
+    "dist",
+    "htmlcov",
+    "node_modules",
+    "out",
+    "site",
+}
 
 
 def main() -> int:
@@ -18,7 +31,10 @@ def main() -> int:
     args = parser.parse_args()
     failures: list[str] = []
 
-    for doc_path in sorted(args.root.rglob("*.md")):
+    root = args.root.resolve()
+    for doc_path in sorted(root.rglob("*.md")):
+        if SKIP_PARTS.intersection(doc_path.relative_to(root).parts):
+            continue
         text = doc_path.read_text(encoding="utf-8")
         for index, match in enumerate(FENCE_RE.finditer(text), start=1):
             lang = match.group("lang")

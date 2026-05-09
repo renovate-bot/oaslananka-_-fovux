@@ -15,16 +15,22 @@ Fovux uses a protected release model.
 - Release artifacts are built from the tagged source.
 - GitHub Release artifacts, SBOMs, checksums, and provenance are always attached
   first.
-- PyPI publishing runs only when `PYPI_TRUSTED_PUBLISHING_ENABLED=true` and the
-  PyPI trusted publisher matches `oaslananka-lab/fovux`, environment
-  `pypi-production`, and `.github/workflows/release-please.yml`.
+- PyPI publishing prefers trusted publishing when
+  `PYPI_TRUSTED_PUBLISHING_ENABLED=true` and the PyPI trusted publisher matches
+  `oaslananka-lab/fovux`, environment `pypi-production`, and
+  `.github/workflows/release-please.yml`.
+- Until trusted publishing is configured, the guarded production job may use
+  `PYPI_TOKEN` from the `pypi-production` environment. Only wheel and sdist
+  files from the GitHub Actions runner are uploaded to PyPI.
+- A package release fails closed when neither trusted publishing nor `PYPI_TOKEN`
+  is available.
 
 ### fovux-studio to VS Marketplace and Open VSX
 
 - Versioned from the same grouped release-please PR as `fovux-mcp`.
 - The release workflow packages the extension with the VS Code extension CLI.
 - Marketplace publishing runs only when `VSCE_PAT` and `OVSX_PAT` are configured
-  in the org repo secrets.
+  in the `vsce-production` environment or org repo secrets.
 
 ## Normal Release
 

@@ -36,7 +36,10 @@ check_clean_github_queue() {
   else
     open_issues="0"
   fi
-  extra_branches="$(gh api "repos/$repo/branches" --paginate --jq '.[].name' | awk '$0 != "main" { count++ } END { print count + 0 }')"
+  extra_branches="$(
+    gh api "repos/$repo/branches" --paginate --jq '.[].name' \
+      | awk '$0 != "main" && $0 != "gh-pages" { count++ } END { print count + 0 }'
+  )"
 
   if [ "$open_prs" = "0" ] && [ "$open_issues" = "0" ] && [ "$extra_branches" = "0" ]; then
     echo "  OK $repo queue: no open PRs, no open issues, no extra branches"
