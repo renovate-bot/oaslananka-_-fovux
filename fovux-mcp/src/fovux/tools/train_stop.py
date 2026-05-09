@@ -8,10 +8,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from fovux.core.errors import FovuxTrainingRunNotFoundError
+from fovux.core.errors import FovuxPathValidationError, FovuxTrainingRunNotFoundError
 from fovux.core.paths import FovuxPaths, get_fovux_home
 from fovux.core.processes import load_process_identity, terminate_process_tree
-from fovux.core.runs import get_registry
+from fovux.core.runs import RunRegistry, get_registry
 from fovux.core.tooling import tool_event
 from fovux.core.validation import ensure_within_root
 from fovux.schemas.training import TrainStopInput, TrainStopOutput
@@ -46,32 +46,34 @@ def _run_train_stop(inp: TrainStopInput) -> TrainStopOutput:
     message = "No PID recorded — status updated without signalling."
 
     if pid is not None:
-        run_dir = ensure_within_root(Path(record.run_path), paths.runs)
+        try:
+            run_dir = ensure_within_root(Path(record.run_path), paths.runs)
+        except FovuxPathValidationError:
+            return _refuse_missing_process_identity(registry, inp.run_id, status)
         identity = load_process_identity(run_dir, pid)
         if identity is None:
-            registry.update_extra(
-                inp.run_id,
-                {
-                    "process_stale": True,
-                    "stop_failure_class": "missing_process_identity",
-                },
-            )
-            return TrainStopOutput(
-                run_id=inp.run_id,
-                status=status,
-                message=(
-                    "Recorded process identity is missing or incomplete; "
-                    "refusing to signal a PID by number alone."
-                ),
-            )
+            return _refuse_missing_process_identity(registry, inp.run_id, status)
         result = terminate_process_tree(identity, force=inp.force)
         message = result.message
         if result.status == "mismatch":
             registry.update_extra(
                 inp.run_id,
                 {
+                    "process_stop_status": result.status,
+                    "process_signal_sent": result.signal_sent,
                     "process_stale": True,
                     "stop_failure_class": "process_identity_mismatch",
+                },
+            )
+            return TrainStopOutput(run_id=inp.run_id, status=status, message=message)
+        if result.status in {"permission_denied", "failed"}:
+            registry.update_extra(
+                inp.run_id,
+                {
+                    "process_stop_status": result.status,
+                    "process_signal_sent": result.signal_sent,
+                    "process_stale": True,
+                    "stop_failure_class": f"process_signal_{result.status}",
                 },
             )
             return TrainStopOutput(run_id=inp.run_id, status=status, message=message)
@@ -80,11 +82,37 @@ def _run_train_stop(inp: TrainStopInput) -> TrainStopOutput:
             {
                 "process_stop_status": result.status,
                 "process_signal_sent": result.signal_sent,
+                "process_stale": result.status == "missing",
+                "stop_failure_class": "missing_process" if result.status == "missing" else None,
             },
         )
 
     registry.update_status(inp.run_id, "stopped")
     return TrainStopOutput(run_id=inp.run_id, status="stopped", message=message)
+
+
+def _refuse_missing_process_identity(
+    registry: RunRegistry,
+    run_id: str,
+    status: str,
+) -> TrainStopOutput:
+    registry.update_extra(
+        run_id,
+        {
+            "process_stop_status": "refused",
+            "process_signal_sent": False,
+            "process_stale": True,
+            "stop_failure_class": "missing_process_identity",
+        },
+    )
+    return TrainStopOutput(
+        run_id=run_id,
+        status=status,
+        message=(
+            "Recorded process identity is missing or incomplete; "
+            "refusing to signal a PID by number alone."
+        ),
+    )
 
 
 def _kill_pid(pid: int, *, force: bool) -> str:

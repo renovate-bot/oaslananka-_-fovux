@@ -35,6 +35,8 @@ from fovux.schemas.errors import ErrorDetail
 
 router = APIRouter()
 _EMPTY_PAYLOAD = Body(default_factory=dict)
+_TOOL_OPERATION_RESULT_TTL_SECONDS = 300.0
+_MAX_TOOL_OPERATION_RESULTS = 128
 
 
 @router.get("/health")
@@ -269,6 +271,107 @@ def _release_semaphore_after_worker(
     return _release
 
 
+def _tool_operation_id(tool: str, args_hash: str) -> str:
+    return f"{tool}-{args_hash}"
+
+
+def _remember_timed_out_tool_worker(
+    *,
+    semaphore: asyncio.Semaphore,
+    operations: dict[str, asyncio.Future[Any]],
+    results: dict[str, dict[str, object]],
+    operation_key: str,
+    operation_id: str,
+) -> Callable[[asyncio.Future[Any]], None]:
+    logger = get_logger(__name__)
+
+    def _complete(task: asyncio.Future[Any]) -> None:
+        try:
+            error = task.exception()
+        except asyncio.CancelledError:
+            error = None
+            results[operation_key] = {
+                "operation_id": operation_id,
+                "status": "cancelled",
+                "finished_at": time.monotonic(),
+            }
+        except Exception as exc:  # defensive: done callbacks must not raise into the event loop
+            error = exc
+            logger.warning(
+                "http_tool_worker_exception_inspection_failed",
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
+        else:
+            if error is None:
+                try:
+                    result = task.result()
+                except Exception as exc:  # defensive: task.exception() should have seen this
+                    error = exc
+                else:
+                    results[operation_key] = {
+                        "operation_id": operation_id,
+                        "status": "succeeded",
+                        "result": result,
+                        "finished_at": time.monotonic(),
+                    }
+            if error is not None:
+                results[operation_key] = {
+                    "operation_id": operation_id,
+                    "status": "failed",
+                    "error_type": type(error).__name__,
+                    "error": str(error),
+                    "finished_at": time.monotonic(),
+                }
+                logger.error(
+                    "http_tool_worker_failed_after_timeout",
+                    error_type=type(error).__name__,
+                    error=str(error),
+                )
+        finally:
+            operations.pop(operation_key, None)
+            _prune_tool_operation_results(results)
+            semaphore.release()
+
+    return _complete
+
+
+def _pop_fresh_tool_operation_result(
+    results: dict[str, dict[str, object]],
+    operation_key: str,
+) -> dict[str, object] | None:
+    result = results.get(operation_key)
+    if result is None:
+        return None
+    finished_at = result.get("finished_at")
+    if not isinstance(finished_at, int | float):
+        results.pop(operation_key, None)
+        return None
+    if time.monotonic() - float(finished_at) > _TOOL_OPERATION_RESULT_TTL_SECONDS:
+        results.pop(operation_key, None)
+        return None
+    return result
+
+
+def _prune_tool_operation_results(results: dict[str, dict[str, object]]) -> None:
+    now = time.monotonic()
+    for key, result in list(results.items()):
+        finished_at = result.get("finished_at")
+        if not isinstance(finished_at, int | float):
+            results.pop(key, None)
+            continue
+        if now - float(finished_at) > _TOOL_OPERATION_RESULT_TTL_SECONDS:
+            results.pop(key, None)
+    if len(results) <= _MAX_TOOL_OPERATION_RESULTS:
+        return
+    oldest = sorted(
+        results.items(),
+        key=lambda item: float(cast(int | float, item[1].get("finished_at", 0))),
+    )
+    for key, _result in oldest[: len(results) - _MAX_TOOL_OPERATION_RESULTS]:
+        results.pop(key, None)
+
+
 @router.post("/tools/{name}")
 async def proxy_tool(
     request: Request,
@@ -279,7 +382,6 @@ async def proxy_tool(
     from fovux.core.auth import token_fingerprint
     from fovux.http.tool_proxy import (
         HttpToolPolicyError,
-        available_tools,
         invoke_tool,
         payload_hash,
         policy_for_tool,
@@ -291,11 +393,73 @@ async def proxy_tool(
         origin = request.client.host
     actor = token_fingerprint(str(request.app.state.auth_token))
     args_hash = payload_hash(payload)
+    operation_id = _tool_operation_id(name, args_hash)
+    operation_key = f"{name}:{args_hash}"
     started = time.monotonic()
     try:
         policy = policy_for_tool(name)
         semaphores = cast(dict[str, asyncio.Semaphore], request.app.state.tool_semaphores)
         semaphore = semaphores[name]
+        operations = cast(dict[str, asyncio.Future[Any]], request.app.state.tool_operations)
+        operation_results = cast(
+            dict[str, dict[str, object]],
+            request.app.state.tool_operation_results,
+        )
+        _prune_tool_operation_results(operation_results)
+        completed_operation = _pop_fresh_tool_operation_result(operation_results, operation_key)
+        if completed_operation is not None:
+            if completed_operation.get("status") == "succeeded":
+                result = cast(dict[str, Any], completed_operation.get("result") or {})
+                logger.info(
+                    "http_tool_audit",
+                    actor=actor,
+                    origin=origin,
+                    tool=name,
+                    args_hash=args_hash,
+                    status="success",
+                    duration_ms=int((time.monotonic() - started) * 1000),
+                    failure_class=None,
+                )
+                return JSONResponse(result)
+            logger.warning(
+                "http_tool_audit",
+                actor=actor,
+                origin=origin,
+                tool=name,
+                args_hash=args_hash,
+                status="failed",
+                duration_ms=int((time.monotonic() - started) * 1000),
+                failure_class="background_operation_failed",
+            )
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "operation_id": completed_operation.get("operation_id", operation_id),
+                    "status": completed_operation.get("status", "failed"),
+                    "error_type": completed_operation.get("error_type"),
+                    "error": completed_operation.get("error"),
+                },
+            )
+        running_operation = operations.get(operation_key)
+        if running_operation is not None and not running_operation.done():
+            logger.info(
+                "http_tool_audit",
+                actor=actor,
+                origin=origin,
+                tool=name,
+                args_hash=args_hash,
+                status="accepted",
+                duration_ms=int((time.monotonic() - started) * 1000),
+                failure_class=None,
+            )
+            return JSONResponse(
+                status_code=202,
+                content={
+                    "operation_id": operation_id,
+                    "status": "running",
+                    "message": "Tool execution is still running.",
+                },
+            )
         try:
             await asyncio.wait_for(semaphore.acquire(), timeout=0.01)
         except TimeoutError as exc:
@@ -319,30 +483,40 @@ async def proxy_tool(
                     timeout=policy.timeout_seconds,
                 )
             except TimeoutError:
-                worker_task.add_done_callback(_release_semaphore_after_worker(semaphore))
+                operations[operation_key] = worker_task
+                worker_task.add_done_callback(
+                    _remember_timed_out_tool_worker(
+                        semaphore=semaphore,
+                        operations=operations,
+                        results=operation_results,
+                        operation_key=operation_key,
+                        operation_id=operation_id,
+                    )
+                )
                 release_deferred = True
-                raise
+                logger.warning(
+                    "http_tool_audit",
+                    actor=actor,
+                    origin=origin,
+                    tool=name,
+                    args_hash=args_hash,
+                    status="accepted",
+                    duration_ms=int((time.monotonic() - started) * 1000),
+                    failure_class="background_operation",
+                )
+                return JSONResponse(
+                    status_code=202,
+                    content={
+                        "operation_id": operation_id,
+                        "status": "running",
+                        "message": (
+                            "Tool execution exceeded the request timeout and continues once."
+                        ),
+                    },
+                )
         finally:
             if not release_deferred:
                 semaphore.release()
-    except KeyError as exc:
-        logger.warning(
-            "http_tool_audit",
-            actor=actor,
-            origin=origin,
-            tool=name,
-            args_hash=args_hash,
-            status="rejected",
-            duration_ms=int((time.monotonic() - started) * 1000),
-            failure_class="unknown_or_disabled_tool",
-        )
-        raise HTTPException(
-            status_code=404,
-            detail={
-                "message": f"Tool '{name}' is not available over HTTP.",
-                "available_tools": available_tools(),
-            },
-        ) from exc
     except TimeoutError as exc:
         logger.warning(
             "http_tool_audit",

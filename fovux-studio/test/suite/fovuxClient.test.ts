@@ -92,7 +92,10 @@ describe("Fovux client and webview host", () => {
     expect(html).toContain("webviews/exportWizard/main.js");
     expect(html).toContain("window.__FOVUX_INITIAL_STATE__");
     expect(html).toContain("connect-src http://127.0.0.1:* https://127.0.0.1:*");
-    expect(html).toMatch(/script-src .*'nonce-[A-Za-z0-9_-]+'/);
+    const cspNonce = html.match(/script-src[^"]*'nonce-([A-Za-z0-9_-]+)'/);
+    const scriptNonce = html.match(/<script nonce="([A-Za-z0-9_-]+)">/);
+    expect(cspNonce?.[1]).toBeTruthy();
+    expect(scriptNonce?.[1]).toBe(cspNonce?.[1]);
   });
 
   it("generates cryptographic base64url CSP nonces", () => {

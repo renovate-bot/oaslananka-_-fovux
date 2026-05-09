@@ -18,7 +18,7 @@ COPY --from=uv /uv /uvx /usr/local/bin/
 
 COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY src ./src
-RUN uv sync --frozen --no-dev --extra yolo --no-editable \
+RUN uv sync --frozen --no-dev --no-editable \
     && rm -rf /root/.cache/uv
 
 ENV FOVUX_HOME=/data/.fovux

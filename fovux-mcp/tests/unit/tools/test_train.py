@@ -17,7 +17,7 @@ from fovux.core.errors import (
     FovuxTrainingSubprocessError,
 )
 from fovux.core.paths import FovuxPaths
-from fovux.core.processes import TerminationResult
+from fovux.core.processes import ProcessIdentity, TerminationResult, command_fingerprint
 from fovux.core.runs import RunRegistry, get_registry
 from fovux.schemas.training import (
     TrainResumeInput,
@@ -40,13 +40,47 @@ def _make_registry(tmp_path: Path) -> RunRegistry:
 def _fake_popen(pid: int = 99999) -> MagicMock:
     mock = MagicMock()
     mock.pid = pid
+    mock.poll.return_value = None
     return mock
+
+
+def _registry_extra(paths: FovuxPaths, run_id: str) -> dict[str, object]:
+    record = get_registry(paths.runs_db).get_run(run_id)
+    assert record is not None
+    raw = record.extra_json
+    if raw is None:
+        payload: object = {}
+    elif isinstance(raw, dict):
+        payload = raw
+    elif isinstance(raw, str):
+        payload = json.loads(raw)
+    else:
+        payload = json.loads(str(raw))
+    assert isinstance(payload, dict)
+    return payload
 
 
 @pytest.fixture()
 def fake_fovux_home(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("FOVUX_HOME", str(tmp_path))
     return tmp_path
+
+
+@pytest.fixture(autouse=True)
+def fake_train_start_process_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep train tool tests focused on registry behavior instead of live procfs."""
+
+    def capture(*, pid: int, command: list[str], cwd: Path) -> ProcessIdentity:
+        return ProcessIdentity(
+            pid=pid,
+            command_fingerprint=command_fingerprint(command),
+            cwd=str(cwd.expanduser().resolve(strict=False)),
+            start_marker="unit-test-start",
+            process_group_id=None,
+            platform="unit-test",
+        )
+
+    monkeypatch.setattr("fovux.tools.train_start.capture_process_identity", capture)
 
 
 # ──────────────────────────────────────────────
@@ -191,6 +225,25 @@ def test_train_start_writes_json_pid_file_atomically(fake_fovux_home):
     assert isinstance(payload["process"]["command_fingerprint"], str)
 
 
+def test_train_start_terminates_worker_when_bookkeeping_fails(fake_fovux_home):
+    """Post-spawn metadata failures should not leave a detached worker running."""
+    proc = _fake_popen(pid=4568)
+    with (
+        patch("fovux.tools.train_start.subprocess.Popen", return_value=proc),
+        patch(
+            "fovux.tools.train_start.capture_process_identity",
+            side_effect=RuntimeError("snapshot failed"),
+        ),
+        pytest.raises(FovuxTrainingSubprocessError, match="snapshot failed"),
+    ):
+        _run_train_start(TrainStartInput(dataset_path=FIXTURES / "mini_yolo", name="bad_meta"))
+
+    proc.terminate.assert_called_once()
+    record = get_registry(FovuxPaths(fake_fovux_home).runs_db).get_run("bad_meta")
+    assert record is not None
+    assert record.status == "failed"
+
+
 def test_train_start_defaults_to_auto_device() -> None:
     """TrainStartInput and train_start should default to automatic device selection."""
     from fovux.tools.train_start import train_start
@@ -281,6 +334,7 @@ def test_train_stop_uses_cached_registry(fake_fovux_home):
 
 def test_train_stop_updates_status(fake_fovux_home):
     """train_stop should update registry status to stopped."""
+    paths = FovuxPaths(fake_fovux_home)
     with patch(
         "fovux.tools.train_start.subprocess.Popen", return_value=_fake_popen(pid=os.getpid())
     ):
@@ -299,10 +353,16 @@ def test_train_stop_updates_status(fake_fovux_home):
     ):
         stop_out = _run_train_stop(TrainStopInput(run_id=start_out.run_id))
     assert stop_out.status == "stopped"
+    extra = _registry_extra(paths, start_out.run_id)
+    assert extra["process_stop_status"] == "terminated"
+    assert extra["process_signal_sent"] is True
+    assert extra["process_stale"] is False
+    assert extra["stop_failure_class"] is None
 
 
 def test_train_stop_noop_when_not_running(fake_fovux_home):
     """Stopping a non-running run should return its current status."""
+    paths = FovuxPaths(fake_fovux_home)
     with patch("fovux.tools.train_start.subprocess.Popen", return_value=_fake_popen()):
         start_out = _run_train_start(
             TrainStartInput(
@@ -312,11 +372,17 @@ def test_train_stop_noop_when_not_running(fake_fovux_home):
     with patch(
         "fovux.tools.train_stop.terminate_process_tree",
         return_value=TerminationResult(status="terminated", signal_sent=True, message="done"),
-    ):
+    ) as terminate:
         _run_train_stop(TrainStopInput(run_id=start_out.run_id))
         stop2 = _run_train_stop(TrainStopInput(run_id=start_out.run_id))
+    terminate.assert_called_once()
     assert stop2.status == "stopped"
     assert "not running" in stop2.message.lower()
+    extra = _registry_extra(paths, start_out.run_id)
+    assert extra["process_stop_status"] == "terminated"
+    assert extra["process_signal_sent"] is True
+    assert extra["process_stale"] is False
+    assert extra["stop_failure_class"] is None
 
 
 def test_train_stop_refuses_pid_only_identity(fake_fovux_home):
@@ -342,10 +408,61 @@ def test_train_stop_refuses_pid_only_identity(fake_fovux_home):
     terminate.assert_not_called()
     assert out.status == "running"
     assert "refusing" in out.message.lower()
+    extra = _registry_extra(paths, "legacy_pid")
+    assert extra["process_stop_status"] == "refused"
+    assert extra["process_signal_sent"] is False
+    assert extra["process_stale"] is True
+    assert extra["stop_failure_class"] == "missing_process_identity"
+
+
+def test_train_stop_refuses_escaped_run_path(fake_fovux_home, tmp_path):
+    """Registry paths outside the runs root must not be used for process identity reads."""
+    paths = FovuxPaths(fake_fovux_home)
+    registry = get_registry(paths.runs_db)
+    escaped_dir = tmp_path / "escaped"
+    escaped_dir.mkdir()
+    (escaped_dir / "pid.txt").write_text(
+        json.dumps(
+            {
+                "pid": 12345,
+                "process": {
+                    "pid": 12345,
+                    "command_fingerprint": command_fingerprint(["python", "-m", "fovux.cli"]),
+                    "cwd": str(escaped_dir),
+                    "start_marker": "unit-test-start",
+                    "process_group_id": None,
+                    "platform": "unit-test",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    registry.create_run(
+        run_id="escaped_path",
+        run_path=escaped_dir,
+        model="yolov8n.pt",
+        dataset_path=FIXTURES / "mini_yolo",
+        task="detect",
+        epochs=1,
+    )
+    registry.update_status("escaped_path", "running", pid=12345)
+
+    with patch("fovux.tools.train_stop.terminate_process_tree") as terminate:
+        out = _run_train_stop(TrainStopInput(run_id="escaped_path"))
+
+    terminate.assert_not_called()
+    assert out.status == "running"
+    assert "refusing" in out.message.lower()
+    extra = _registry_extra(paths, "escaped_path")
+    assert extra["process_stop_status"] == "refused"
+    assert extra["process_signal_sent"] is False
+    assert extra["process_stale"] is True
+    assert extra["stop_failure_class"] == "missing_process_identity"
 
 
 def test_train_stop_refuses_mismatched_process_identity(fake_fovux_home):
     """A reused PID with mismatched process identity must stay untouched."""
+    paths = FovuxPaths(fake_fovux_home)
     with patch(
         "fovux.tools.train_start.subprocess.Popen", return_value=_fake_popen(pid=os.getpid())
     ):
@@ -363,6 +480,70 @@ def test_train_stop_refuses_mismatched_process_identity(fake_fovux_home):
 
     assert out.status == "running"
     assert "matches" in out.message
+    extra = _registry_extra(paths, start_out.run_id)
+    assert extra["process_stop_status"] == "mismatch"
+    assert extra["process_signal_sent"] is False
+    assert extra["process_stale"] is True
+    assert extra["stop_failure_class"] == "process_identity_mismatch"
+
+
+@pytest.mark.parametrize("result_status", ["permission_denied", "failed"])
+def test_train_stop_keeps_run_running_when_signal_fails(fake_fovux_home, result_status: str):
+    """Failed signal attempts must not mark a still-unknown process as stopped."""
+    paths = FovuxPaths(fake_fovux_home)
+    with patch(
+        "fovux.tools.train_start.subprocess.Popen", return_value=_fake_popen(pid=os.getpid())
+    ):
+        start_out = _run_train_start(TrainStartInput(dataset_path=FIXTURES / "mini_yolo"))
+
+    with patch(
+        "fovux.tools.train_stop.terminate_process_tree",
+        return_value=TerminationResult(
+            status=result_status,
+            signal_sent=False,
+            message=f"signal {result_status}",
+        ),
+    ):
+        out = _run_train_stop(TrainStopInput(run_id=start_out.run_id))
+
+    record = get_registry(paths.runs_db).get_run(start_out.run_id)
+    assert record is not None
+    assert out.status == "running"
+    assert record.status == "running"
+    extra = _registry_extra(paths, start_out.run_id)
+    assert extra["process_stop_status"] == result_status
+    assert extra["process_signal_sent"] is False
+    assert extra["process_stale"] is True
+    assert extra["stop_failure_class"] == f"process_signal_{result_status}"
+
+
+def test_train_stop_marks_missing_process_stopped_with_stale_audit(fake_fovux_home):
+    """A recorded process that has already exited can be closed with stale audit context."""
+    paths = FovuxPaths(fake_fovux_home)
+    with patch(
+        "fovux.tools.train_start.subprocess.Popen", return_value=_fake_popen(pid=os.getpid())
+    ):
+        start_out = _run_train_start(TrainStartInput(dataset_path=FIXTURES / "mini_yolo"))
+
+    with patch(
+        "fovux.tools.train_stop.terminate_process_tree",
+        return_value=TerminationResult(
+            status="missing",
+            signal_sent=False,
+            message="PID no longer exists.",
+        ),
+    ):
+        out = _run_train_stop(TrainStopInput(run_id=start_out.run_id))
+
+    record = get_registry(paths.runs_db).get_run(start_out.run_id)
+    assert record is not None
+    assert out.status == "stopped"
+    assert record.status == "stopped"
+    extra = _registry_extra(paths, start_out.run_id)
+    assert extra["process_stop_status"] == "missing"
+    assert extra["process_signal_sent"] is False
+    assert extra["process_stale"] is True
+    assert extra["stop_failure_class"] == "missing_process"
 
 
 def test_train_resume_unknown_run_raises(fake_fovux_home):

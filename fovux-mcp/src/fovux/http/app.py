@@ -88,6 +88,8 @@ def create_app(*, enable_metrics: bool = False) -> FastAPI:
         for name, policy in HTTP_TOOL_POLICIES.items()
         if policy.enabled
     }
+    app.state.tool_operations = {}
+    app.state.tool_operation_results = {}
 
     @app.middleware("http")
     async def _auth_and_rate_limit(

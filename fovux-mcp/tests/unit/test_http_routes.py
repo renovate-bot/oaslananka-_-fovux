@@ -21,8 +21,12 @@ from fovux.http.routes import (
     _load_metric_payloads,
     _load_metrics_jsonl,
     _metric_event_stream,
+    _pop_fresh_tool_operation_result,
+    _prune_tool_operation_results,
     _release_semaphore_after_worker,
+    _remember_timed_out_tool_worker,
     _resolve_run_dir,
+    _tool_operation_id,
 )
 from fovux.http.tool_proxy import HTTP_TOOL_POLICIES, HttpToolPolicy
 
@@ -295,15 +299,15 @@ def test_get_run_missing_returns_404(tmp_fovux_home: Path) -> None:
     assert response.status_code == 404
 
 
-def test_tool_proxy_unknown_tool_returns_404(tmp_fovux_home: Path) -> None:
-    """Unknown tool names should list the available HTTP-proxied tools."""
+def test_tool_proxy_unknown_tool_returns_policy_error(tmp_fovux_home: Path) -> None:
+    """Unknown tool names should follow the HTTP tool policy denial path."""
     with TestClient(create_app()) as client:
         response = client.post("/tools/ghost_tool", json={}, headers=_auth_headers(client))
 
-    assert response.status_code == 404
+    assert response.status_code == 403
     payload = response.json()["detail"]
-    assert "available_tools" in payload
-    assert "model_list" in payload["available_tools"]
+    assert payload["code"] == "FOVUX_HTTP_001"
+    assert "not available" in payload["message"]
 
 
 def test_tool_proxy_fovux_error_returns_400(tmp_fovux_home: Path) -> None:
@@ -372,11 +376,11 @@ def test_long_running_http_tools_require_confirmation() -> None:
         assert HTTP_TOOL_POLICIES[tool_name].requires_confirmation is True
 
 
-def test_tool_proxy_keeps_semaphore_until_timed_out_worker_finishes(
+def test_tool_proxy_returns_operation_for_timed_out_worker(
     tmp_fovux_home: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Timed-out thread workers should still hold concurrency until they finish."""
+    """Timed-out thread workers should become idempotent background operations."""
     worker_finished = threading.Event()
     calls = 0
 
@@ -403,13 +407,36 @@ def test_tool_proxy_keeps_semaphore_until_timed_out_worker_finishes(
         deadline = time.time() + 1.0
         while True:
             third = client.post("/tools/model_list", json={}, headers=headers)
-            if third.status_code != 429 or time.time() >= deadline:
+            if third.status_code not in {202, 429} or time.time() >= deadline:
                 break
             time.sleep(0.01)
 
-    assert first.status_code == 504
-    assert second.status_code == 429
+    assert first.status_code == 202
+    assert first.json()["operation_id"] == "model_list-44136fa355b3678a"
+    assert second.status_code == 202
+    assert second.json()["operation_id"] == first.json()["operation_id"]
     assert third.status_code == 200
+
+
+def test_tool_proxy_returns_background_operation_error(tmp_fovux_home: Path) -> None:
+    """Failed background operation retries should expose the stored local error detail."""
+    with TestClient(create_app()) as client:
+        client.app.state.tool_operation_results["model_list:44136fa355b3678a"] = {
+            "operation_id": "model_list-44136fa355b3678a",
+            "status": "failed",
+            "error_type": "RuntimeError",
+            "error": "background failed",
+            "finished_at": time.monotonic(),
+        }
+        response = client.post("/tools/model_list", json={}, headers=_auth_headers(client))
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "operation_id": "model_list-44136fa355b3678a",
+        "status": "failed",
+        "error_type": "RuntimeError",
+        "error": "background failed",
+    }
 
 
 def test_timed_out_worker_exception_is_logged_before_semaphore_release(
@@ -443,6 +470,84 @@ def test_timed_out_worker_exception_is_logged_before_semaphore_release(
             {"error_type": "RuntimeError", "error": "worker failed"},
         )
     ]
+
+
+def test_timed_out_operation_callback_tracks_result_and_expiry() -> None:
+    """Timed-out tool operations should keep one retrievable result for idempotent retry."""
+
+    async def scenario() -> None:
+        semaphore = asyncio.Semaphore(0)
+        future: asyncio.Future[object] = asyncio.get_running_loop().create_future()
+        operations: dict[str, asyncio.Future[object]] = {"model_list:abc": future}
+        results: dict[str, dict[str, object]] = {}
+
+        callback = _remember_timed_out_tool_worker(
+            semaphore=semaphore,
+            operations=operations,
+            results=results,
+            operation_key="model_list:abc",
+            operation_id=_tool_operation_id("model_list", "abc"),
+        )
+        future.set_result({"ok": True})
+        callback(future)
+        await asyncio.wait_for(semaphore.acquire(), timeout=0.1)
+
+        assert operations == {}
+        fresh = _pop_fresh_tool_operation_result(results, "model_list:abc")
+        assert fresh is not None
+        assert fresh["operation_id"] == "model_list-abc"
+        assert fresh["status"] == "succeeded"
+        assert fresh["result"] == {"ok": True}
+        fresh["finished_at"] = time.monotonic() - 301
+        assert _pop_fresh_tool_operation_result(results, "model_list:abc") is None
+        assert "model_list:abc" not in results
+
+        results["model_list:bad"] = {"finished_at": "not-a-clock"}
+        assert _pop_fresh_tool_operation_result(results, "model_list:bad") is None
+        assert "model_list:bad" not in results
+
+        failed_future: asyncio.Future[object] = asyncio.get_running_loop().create_future()
+        operations["model_list:failed"] = failed_future
+        failed_callback = _remember_timed_out_tool_worker(
+            semaphore=semaphore,
+            operations=operations,
+            results=results,
+            operation_key="model_list:failed",
+            operation_id=_tool_operation_id("model_list", "failed"),
+        )
+        failed_future.set_exception(RuntimeError("background failed"))
+        failed_callback(failed_future)
+        await asyncio.wait_for(semaphore.acquire(), timeout=0.1)
+        failed = _pop_fresh_tool_operation_result(results, "model_list:failed")
+        assert failed is not None
+        assert failed["status"] == "failed"
+        assert failed["error_type"] == "RuntimeError"
+        assert failed["error"] == "background failed"
+
+        cancelled_future: asyncio.Future[object] = asyncio.get_running_loop().create_future()
+        operations["model_list:cancelled"] = cancelled_future
+        cancelled_callback = _remember_timed_out_tool_worker(
+            semaphore=semaphore,
+            operations=operations,
+            results=results,
+            operation_key="model_list:cancelled",
+            operation_id=_tool_operation_id("model_list", "cancelled"),
+        )
+        cancelled_future.cancel()
+        cancelled_callback(cancelled_future)
+        await asyncio.wait_for(semaphore.acquire(), timeout=0.1)
+        cancelled = _pop_fresh_tool_operation_result(results, "model_list:cancelled")
+        assert cancelled is not None
+        assert cancelled["status"] == "cancelled"
+
+        results.clear()
+        for index in range(130):
+            results[f"old:{index}"] = {"finished_at": time.monotonic() - 301}
+        results["fresh"] = {"finished_at": time.monotonic()}
+        _prune_tool_operation_results(results)
+        assert results == {"fresh": results["fresh"]}
+
+    asyncio.run(scenario())
 
 
 def test_resolve_run_dir_returns_registered_path(tmp_fovux_home: Path) -> None:

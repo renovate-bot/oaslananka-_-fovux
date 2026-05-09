@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import uuid
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -168,9 +169,12 @@ def _run_train_start(inp: TrainStartInput) -> TrainStartOutput:
             {"pid": proc.pid, "process": process_identity_payload(identity)},
         )
         registry.update_status(run_id, "running", pid=proc.pid)
-    except OSError as exc:
-        proc.terminate()
-        registry.update_status(run_id, "failed", pid=proc.pid)
+    except Exception as exc:
+        if proc.poll() is None:
+            with suppress(OSError, ProcessLookupError, PermissionError):
+                proc.terminate()
+        with suppress(Exception):
+            registry.update_status(run_id, "failed", pid=proc.pid)
         raise FovuxTrainingSubprocessError(str(exc)) from exc
 
     return TrainStartOutput(

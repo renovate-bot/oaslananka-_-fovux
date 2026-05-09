@@ -49,7 +49,7 @@ def test_http_auth_token_creation_log_redacts_raw_token(tmp_path: Path) -> None:
         fingerprint=token_fingerprint(sample_value),
         path=str(token_path),
     )
-    assert sample_value not in str(logger.warning.call_args_list)
+    assert sample_value not in str(logger.mock_calls)
 
 
 @pytest.mark.security
@@ -90,6 +90,7 @@ def test_container_defaults_bind_to_localhost() -> None:
     # Split intentionally to avoid static-analysis flags for the container bind literal.
     assert '"--host", "' + "0." + "0." + "0." + "0" + '"' in dockerfile
     assert "host exposure on loopback" in dockerfile
+    assert "--extra yolo" not in dockerfile
     assert '"127.0.0.1:7823:7823"' in compose
 
 

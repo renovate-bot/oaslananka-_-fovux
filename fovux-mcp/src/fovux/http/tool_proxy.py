@@ -82,7 +82,10 @@ def policy_for_tool(name: str) -> HttpToolPolicy:
     """Return the HTTP policy for a reachable tool."""
     policy = HTTP_TOOL_POLICIES.get(name)
     if policy is None or not policy.enabled or name not in registry_available_tools():
-        raise KeyError(name)
+        raise HttpToolPolicyError(
+            f"Tool '{name}' is not available over HTTP.",
+            hint="Use one of the enabled local HTTP tools exposed by this server.",
+        )
     return policy
 
 

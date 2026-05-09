@@ -18,6 +18,10 @@ from pathlib import Path
 from fovux.core.json_io import read_json_file
 
 
+class ProcessSnapshotError(RuntimeError):
+    """Raised when a process identity snapshot cannot be trusted."""
+
+
 @dataclass(frozen=True)
 class ProcessIdentity:
     """Stable identity fields recorded when a worker process is spawned."""
@@ -52,11 +56,12 @@ def capture_process_identity(
     cwd: Path,
 ) -> ProcessIdentity:
     """Capture the process metadata needed to reject stale PID reuse."""
-    try:
-        snapshot = _snapshot_process(pid)
-    except Exception:
-        snapshot = {}
+    snapshot = _snapshot_process(pid)
+    if not snapshot:
+        raise ProcessSnapshotError(f"Could not capture metadata for worker PID {pid}.")
     start_marker = snapshot.get("start_marker")
+    if start_marker is None or str(start_marker) == "":
+        raise ProcessSnapshotError(f"Worker PID {pid} has no stable start marker.")
     return ProcessIdentity(
         pid=pid,
         command_fingerprint=command_fingerprint(command),
@@ -155,11 +160,25 @@ def terminate_process_tree(
             signal_sent=True,
             message=f"Signal sent to verified worker PID {identity.pid}.",
         )
-    except (ProcessLookupError, OSError):
+    except ProcessLookupError:
         return TerminationResult(
             status="missing",
             signal_sent=False,
             message=f"PID {identity.pid} no longer exists; no signal was sent.",
+        )
+    except PermissionError as exc:
+        return TerminationResult(
+            status="permission_denied",
+            signal_sent=False,
+            message=(
+                f"Permission denied while signalling verified worker PID {identity.pid}: {exc}."
+            ),
+        )
+    except OSError as exc:
+        return TerminationResult(
+            status="failed",
+            signal_sent=False,
+            message=f"Failed to signal verified worker PID {identity.pid}: {exc}.",
         )
 
 

@@ -9,9 +9,12 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 from fovux.core.json_io import write_json_atomically
 from fovux.core.processes import (
     ProcessIdentity,
+    ProcessSnapshotError,
     _as_int,
     _snapshot_process,
     _snapshot_process_darwin,
@@ -71,13 +74,22 @@ def test_capture_process_identity_uses_snapshot_metadata() -> None:
     assert identity.process_group_id == 456
 
 
-def test_capture_process_identity_tolerates_snapshot_failure() -> None:
-    """Snapshot failures should produce PID metadata that still refuses stale kills."""
-    with patch("fovux.core.processes._snapshot_process", side_effect=ValueError("boom")):
-        identity = capture_process_identity(pid=123, command=["python"], cwd=Path.cwd())
+def test_capture_process_identity_fails_closed_on_snapshot_failure() -> None:
+    """Snapshot failures should not persist unverifiable PID metadata."""
+    with (
+        patch("fovux.core.processes._snapshot_process", side_effect=ValueError("boom")),
+        pytest.raises(ValueError, match="boom"),
+    ):
+        capture_process_identity(pid=123, command=["python"], cwd=Path.cwd())
 
-    assert identity.pid == 123
-    assert identity.start_marker is None
+
+def test_capture_process_identity_rejects_empty_snapshot() -> None:
+    """Missing snapshot data should not be recorded as a usable identity."""
+    with (
+        patch("fovux.core.processes._snapshot_process", return_value={}),
+        pytest.raises(ProcessSnapshotError, match="Could not capture metadata"),
+    ):
+        capture_process_identity(pid=123, command=["python"], cwd=Path.cwd())
 
 
 def test_process_identity_payload_and_load_roundtrip(tmp_path: Path) -> None:
@@ -286,6 +298,34 @@ def test_terminate_process_tree_handles_signal_race() -> None:
 
     assert result.status == "missing"
     assert result.signal_sent is False
+
+
+def test_terminate_process_tree_reports_permission_denied() -> None:
+    """Permission errors should remain distinguishable from missing processes."""
+    with (
+        patch("fovux.core.processes.sys.platform", "linux"),
+        patch("fovux.core.processes._snapshot_process", return_value=_snapshot()),
+        patch("fovux.core.processes.os.killpg", side_effect=PermissionError("denied"), create=True),
+    ):
+        result = terminate_process_tree(_identity(), force=True)
+
+    assert result.status == "permission_denied"
+    assert result.signal_sent is False
+    assert "Permission denied" in result.message
+
+
+def test_terminate_process_tree_reports_signal_failure() -> None:
+    """Unexpected signal failures should not be mislabeled as missing PIDs."""
+    with (
+        patch("fovux.core.processes.sys.platform", "linux"),
+        patch("fovux.core.processes._snapshot_process", return_value=_snapshot()),
+        patch("fovux.core.processes.os.killpg", side_effect=OSError("bad signal"), create=True),
+    ):
+        result = terminate_process_tree(_identity(), force=True)
+
+    assert result.status == "failed"
+    assert result.signal_sent is False
+    assert "bad signal" in result.message
 
 
 def test_snapshot_process_dispatches_by_platform() -> None:

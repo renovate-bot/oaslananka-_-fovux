@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-import importlib
+import os
+import subprocess
 import sys
 import tomllib
 from pathlib import Path
@@ -10,12 +11,28 @@ from pathlib import Path
 
 def test_core_import_does_not_import_ultralytics() -> None:
     """Importing Fovux core modules should not load the optional YOLO backend."""
-    sys.modules.pop("ultralytics", None)
+    project_root = Path(__file__).resolve().parents[2]
+    env = {
+        **os.environ,
+        "PYTHONPATH": os.pathsep.join(
+            [str(project_root / "src"), os.environ.get("PYTHONPATH", "")]
+        ),
+    }
+    script = (
+        "import importlib, sys;"
+        "importlib.import_module('fovux');"
+        "importlib.import_module('fovux.core.auth');"
+        "raise SystemExit(1 if 'ultralytics' in sys.modules else 0)"
+    )
+    result = subprocess.run(  # noqa: S603 - fixed interpreter and constant import probe.
+        [sys.executable, "-c", script],
+        capture_output=True,
+        check=False,
+        env=env,
+        text=True,
+    )
 
-    importlib.import_module("fovux")
-    importlib.import_module("fovux.core.auth")
-
-    assert "ultralytics" not in sys.modules
+    assert result.returncode == 0, result.stderr
 
 
 def test_ultralytics_is_declared_as_optional_extra() -> None:
