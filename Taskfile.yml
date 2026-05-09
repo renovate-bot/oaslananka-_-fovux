@@ -58,7 +58,7 @@ tasks:
   test:cov:
     desc: Run tests with coverage
     cmds:
-      - cmd: cd fovux-mcp && uv run pytest
+      - cmd: cd fovux-mcp && uv run pytest --cov=fovux --cov-fail-under=92 --cov-report=term-missing --cov-report=html --cov-report=xml
       - cmd: cd fovux-studio && pnpm test
 
   security:

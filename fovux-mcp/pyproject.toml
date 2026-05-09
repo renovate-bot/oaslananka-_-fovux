@@ -143,11 +143,6 @@ exclude = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = [
-    "--cov=fovux",
-    "--cov-fail-under=92",
-    "--cov-report=term-missing",
-    "--cov-report=html",
-    "--cov-report=xml",
     "--junitxml=junit.xml",
     "--strict-markers",
     "--timeout=60",

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from fovux.core.dataset_utils import find_images
 
 
@@ -12,6 +14,23 @@ def test_find_images_rejects_filesystem_root_without_scanning() -> None:
     root = Path(Path.cwd().anchor)
 
     assert find_images(root) == []
+
+
+def test_find_images_rejects_root_equivalent_path_without_scanning() -> None:
+    """Root-equivalent inputs should be rejected after canonicalization."""
+    root_equivalent = Path(Path.cwd().anchor) / "definitely-missing" / ".."
+
+    assert find_images(root_equivalent) == []
+
+
+def test_find_images_canonicalizes_current_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Relative dataset paths should resolve before the root guard runs."""
+    (tmp_path / "image.jpg").write_bytes(b"not-real-image")
+    monkeypatch.chdir(tmp_path)
+
+    assert [path.name for path in find_images(Path("."))] == ["image.jpg"]
 
 
 def test_find_images_returns_sorted_images(tmp_path: Path) -> None:

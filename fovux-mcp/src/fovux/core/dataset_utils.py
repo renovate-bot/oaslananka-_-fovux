@@ -20,6 +20,7 @@ def find_images(root: Path, max_count: int | None = None) -> list[Path]:
     Returns:
         Sorted list of image Paths.
     """
+    root = root.resolve(strict=False)
     if root == root.parent:
         return []
 
