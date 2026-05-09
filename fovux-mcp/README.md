@@ -26,7 +26,9 @@ Fovux is a professional-grade, open-source edge-AI computer vision workbench. It
 
 ## Status
 
-Current distribution is source-based from this repository. Packaged releases will be published separately.
+Packaged releases are produced by the `oaslananka-lab/fovux` release pipeline and mirrored
+to `oaslananka/fovux`. Install fovux-mcp from PyPI when you need the signed release artifact, or use
+the source workflow below for development.
 
 ## Install From Source
 

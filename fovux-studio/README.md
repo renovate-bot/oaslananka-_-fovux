@@ -8,8 +8,9 @@ Visual companion for [Fovux MCP](https://github.com/oaslananka/fovux/tree/main/f
 
 ## Status
 
-Current distribution is release-ready from source. Marketplace and Open VSX publication are
-maintainer-gated until release credentials are supplied.
+Packaged releases are produced by the `oaslananka-lab/fovux` release pipeline and mirrored
+to `oaslananka/fovux`. Use the Fovux Studio Marketplace/Open VSX release for normal installs, or package
+from source when developing the extension.
 
 ## Features
 
