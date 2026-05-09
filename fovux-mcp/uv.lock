@@ -899,7 +899,7 @@ wheels = [
 
 [[package]]
 name = "fovux-mcp"
-version = "4.1.5"
+version = "4.1.6"
 source = { editable = "." }
 dependencies = [
     { name = "cryptography" },

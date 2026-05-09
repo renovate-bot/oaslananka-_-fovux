@@ -5,6 +5,17 @@ All notable changes to `fovux-mcp` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [4.1.6](https://github.com/oaslananka-lab/fovux/compare/fovux-mcp-v4.1.5...fovux-mcp-v4.1.6) (2026-05-09)
+
+
+### Bug Fixes
+
+* **dataset:** canonicalize image scan roots ([1dee570](https://github.com/oaslananka-lab/fovux/commit/1dee570a68a54f4e53db9544881499278ad01ae3))
+* **process:** harden resumed worker termination ([a9c692f](https://github.com/oaslananka-lab/fovux/commit/a9c692fa16d69d4d8c23b99c384c0021201799fe))
+* **process:** preserve empty procfs command arguments ([3640024](https://github.com/oaslananka-lab/fovux/commit/3640024cd5dd2d2ad149fb208a6bfca19edaa389))
+* **security:** address review hardening follow-ups ([825cd40](https://github.com/oaslananka-lab/fovux/commit/825cd400b2216aa878030446d23ca186e55deb82))
+* **security:** harden runtime control surface ([d443d48](https://github.com/oaslananka-lab/fovux/commit/d443d483effc4697c982158854aef7a5d9f7169f))
+
 ## [4.1.5](https://github.com/oaslananka-lab/fovux/compare/fovux-mcp-v4.1.4...fovux-mcp-v4.1.5) (2026-05-08)
 
 

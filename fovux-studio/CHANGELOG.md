@@ -4,6 +4,15 @@ All notable changes to `fovux-studio` are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.1.6](https://github.com/oaslananka-lab/fovux/compare/fovux-studio-v4.1.5...fovux-studio-v4.1.6) (2026-05-09)
+
+
+### Bug Fixes
+
+* **process:** harden resumed worker termination ([a9c692f](https://github.com/oaslananka-lab/fovux/commit/a9c692fa16d69d4d8c23b99c384c0021201799fe))
+* **security:** address review hardening follow-ups ([825cd40](https://github.com/oaslananka-lab/fovux/commit/825cd400b2216aa878030446d23ca186e55deb82))
+* **security:** harden runtime control surface ([d443d48](https://github.com/oaslananka-lab/fovux/commit/d443d483effc4697c982158854aef7a5d9f7169f))
+
 ## [4.1.5](https://github.com/oaslananka-lab/fovux/compare/fovux-studio-v4.1.4...fovux-studio-v4.1.5) (2026-05-08)
 
 
