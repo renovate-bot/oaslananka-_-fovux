@@ -13,6 +13,12 @@ import pytest
 from fovux.core.runs import RunRegistry
 from fovux.core.train_worker import _handle_stop_signal, _write_status, run
 
+TRAIN_WORKER_RUNPY_WARNING = (
+    "ignore:'fovux.core.train_worker' found in sys.modules after import of package "
+    "'fovux.core', but prior to execution of 'fovux.core.train_worker'; this may "
+    "result in unpredictable behaviour:RuntimeWarning:runpy"
+)
+
 
 def _write_params(run_dir: Path, **overrides: object) -> dict[str, object]:
     params: dict[str, object] = {
@@ -125,6 +131,7 @@ def test_run_marks_failure_and_exits_when_training_crashes(tmp_path: Path) -> No
     assert "RuntimeError" in status["error"]
 
 
+@pytest.mark.filterwarnings(TRAIN_WORKER_RUNPY_WARNING)
 def test_main_usage_error_exits_cleanly() -> None:
     """Executing the module without a run directory should log a usage error and exit."""
     fake_logger = MagicMock()
@@ -141,6 +148,7 @@ def test_main_usage_error_exits_cleanly() -> None:
     fake_logger.error.assert_called_once()
 
 
+@pytest.mark.filterwarnings(TRAIN_WORKER_RUNPY_WARNING)
 def test_main_runs_worker_when_path_is_provided(tmp_path: Path) -> None:
     """Executing the module with a run directory should invoke the worker path."""
     run_dir = tmp_path / "run_script"
