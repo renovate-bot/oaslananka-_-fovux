@@ -18,8 +18,10 @@ from fovux.core.errors import (
 )
 from fovux.core.json_io import write_json_atomically
 from fovux.core.paths import FovuxPaths, get_fovux_home
+from fovux.core.processes import capture_process_identity, process_identity_payload
 from fovux.core.runs import get_registry
 from fovux.core.tooling import tool_event
+from fovux.core.validation import ensure_within_root, validate_run_id
 from fovux.schemas.training import TrainStartInput, TrainStartOutput
 from fovux.server import mcp
 
@@ -79,8 +81,8 @@ def _run_train_start(inp: TrainStartInput) -> TrainStartOutput:
     paths = FovuxPaths(get_fovux_home())
     registry = get_registry(paths.runs_db)
 
-    run_id = inp.name or f"run_{uuid.uuid4().hex[:8]}"
-    run_dir = paths.runs / run_id
+    run_id = validate_run_id(inp.name or f"run_{uuid.uuid4().hex[:8]}")
+    run_dir = ensure_within_root(paths.runs / run_id, paths.runs)
 
     existing = registry.get_run(run_id)
     if existing is not None:
@@ -133,24 +135,38 @@ def _run_train_start(inp: TrainStartInput) -> TrainStartOutput:
 
     stdout_log = run_dir / "stdout.log"
     stderr_log = run_dir / "stderr.log"
+    command = [sys.executable, "-m", "fovux.core.train_worker", str(run_dir)]
+    popen_kwargs: dict[str, Any] = {
+        "stdout": None,
+        "stderr": None,
+        "close_fds": True,
+        "env": {**os.environ, "FOVUX_RUN_DIR": str(run_dir)},
+    }
+    if sys.platform == "win32":
+        popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        popen_kwargs["start_new_session"] = True
     try:
         with (
             stdout_log.open("w", encoding="utf-8") as stdout_fh,
             stderr_log.open("w", encoding="utf-8") as stderr_fh,
         ):
+            popen_kwargs["stdout"] = stdout_fh
+            popen_kwargs["stderr"] = stderr_fh
             proc = subprocess.Popen(  # noqa: S603 - fixed local module execution only
-                [sys.executable, "-m", "fovux.core.train_worker", str(run_dir)],
-                stdout=stdout_fh,
-                stderr=stderr_fh,
-                close_fds=True,
-                env={**os.environ, "FOVUX_RUN_DIR": str(run_dir)},
+                command,
+                **popen_kwargs,
             )
     except OSError as exc:
         registry.update_status(run_id, "failed")
         raise FovuxTrainingSubprocessError(str(exc)) from exc
 
     try:
-        write_json_atomically(run_dir / "pid.txt", {"pid": proc.pid})
+        identity = capture_process_identity(pid=proc.pid, command=command, cwd=Path.cwd())
+        write_json_atomically(
+            run_dir / "pid.txt",
+            {"pid": proc.pid, "process": process_identity_payload(identity)},
+        )
         registry.update_status(run_id, "running", pid=proc.pid)
     except OSError as exc:
         proc.terminate()

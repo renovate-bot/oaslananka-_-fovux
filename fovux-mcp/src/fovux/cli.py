@@ -10,7 +10,7 @@ from rich.console import Console
 from rich.table import Table
 
 from fovux import __version__
-from fovux.core.auth import auth_token_path, rotate_auth_token
+from fovux.core.auth import auth_token_path, rotate_auth_token, token_fingerprint
 from fovux.core.doctor import collect_doctor_report
 from fovux.core.logging import configure_logging, get_logger
 from fovux.core.paths import get_fovux_home
@@ -147,12 +147,24 @@ def doctor(ctx: typer.Context) -> None:
 
 
 @app.command("rotate-token")
-def rotate_token_command(ctx: typer.Context) -> None:
+def rotate_token_command(
+    ctx: typer.Context,
+    show_token: bool = typer.Option(
+        False,
+        "--show-token",
+        help="Print the raw token once for manual local client configuration.",
+    ),
+) -> None:
     """Rotate the local HTTP bearer token used by the optional transport."""
     _configure_from_context(ctx.obj)
     token = rotate_auth_token()
-    console.print(f"Rotated token at {auth_token_path(get_fovux_home())}")
-    console.print(token)
+    token_path = auth_token_path(get_fovux_home())
+    console.print(f"Rotated token at {token_path}")
+    console.print(f"Token fingerprint: {token_fingerprint(token)}")
+    if show_token:
+        console.print(token)
+    else:
+        console.print("Token value hidden. Use --show-token only for a one-time local reveal.")
 
 
 telemetry_app = typer.Typer(help="Manage local-first telemetry settings.")

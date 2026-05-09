@@ -18,7 +18,7 @@ COPY --from=uv /uv /uvx /usr/local/bin/
 
 COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY src ./src
-RUN uv sync --frozen --no-dev --no-editable \
+RUN uv sync --frozen --no-dev --extra yolo --no-editable \
     && rm -rf /root/.cache/uv
 
 ENV FOVUX_HOME=/data/.fovux
@@ -28,4 +28,5 @@ VOLUME ["/data"]
 EXPOSE 7823
 
 ENTRYPOINT ["fovux-mcp"]
+# Containers listen on their bridge interface; docker-compose keeps host exposure on loopback.
 CMD ["serve", "--http", "--host", "0.0.0.0", "--port", "7823"]

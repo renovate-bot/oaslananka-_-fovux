@@ -6,10 +6,15 @@ from pathlib import Path
 
 import pytest
 
-from fovux.core.errors import FovuxTrainingError, FovuxTrainingRunNotFoundError
+from fovux.core.errors import (
+    FovuxPathValidationError,
+    FovuxTrainingError,
+    FovuxTrainingRunNotFoundError,
+)
 from fovux.core.paths import ensure_fovux_dirs
 from fovux.core.runs import close_registry, get_registry
-from fovux.schemas.management import RunDeleteInput, RunTagInput
+from fovux.schemas.management import RunArchiveInput, RunDeleteInput, RunTagInput
+from fovux.tools.run_archive import _run_run_archive
 from fovux.tools.run_delete import _run_delete
 from fovux.tools.run_tag import _normalize_tags, _run_tag
 
@@ -72,6 +77,25 @@ def test_run_delete_unknown_run_raises(run_home) -> None:
     """Unknown run IDs should produce a stable not-found error."""
     with pytest.raises(FovuxTrainingRunNotFoundError):
         _run_delete(RunDeleteInput(run_id="missing"))
+
+
+def test_run_archive_rejects_registry_path_escape(run_home, tmp_path: Path) -> None:
+    """Archive must not trust registry paths that escape the configured runs root."""
+    paths, registry, _completed_path, _running_path = run_home
+    escaped_path = tmp_path / "escaped_run"
+    escaped_path.mkdir()
+    registry.create_run(
+        run_id="escaped",
+        run_path=escaped_path,
+        model="yolov8n.pt",
+        dataset_path=tmp_path / "dataset",
+        task="detect",
+        epochs=1,
+    )
+    registry.update_status("escaped", "complete")
+
+    with pytest.raises(FovuxPathValidationError):
+        _run_run_archive(RunArchiveInput(run_id="escaped"))
 
 
 def test_run_tag_normalizes_and_persists_tags(run_home) -> None:

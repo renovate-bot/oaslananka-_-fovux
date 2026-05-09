@@ -164,6 +164,18 @@ def test_check_parity_compares_outputs(tmp_path, monkeypatch):
 
     raw_model = _RawModel()
     pt_model = SimpleNamespace(model=raw_model)
+
+    class _NoGrad:
+        def __enter__(self) -> None:
+            return None
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+    fake_torch = SimpleNamespace(
+        from_numpy=lambda array: array,
+        no_grad=lambda: _NoGrad(),
+    )
     session = SimpleNamespace(
         get_inputs=lambda: [SimpleNamespace(name="images")],
         run=lambda *_args, **_kwargs: [np.ones((1, 3, 640, 640), dtype=np.float32)],
@@ -173,6 +185,7 @@ def test_check_parity_compares_outputs(tmp_path, monkeypatch):
     with (
         patch("importlib.import_module", return_value=fake_ort),
         patch.object(export_onnx_module, "load_yolo_model", return_value=pt_model),
+        patch.object(export_onnx_module, "_load_torch", return_value=fake_torch),
     ):
         passed, max_diff = _check_parity(
             pt,

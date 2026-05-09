@@ -14,6 +14,7 @@ from fovux.cli import (
     _run_stdio,
     app,
 )
+from fovux.core.auth import token_fingerprint
 from fovux.schemas.diagnostics import (
     FovuxDoctorOutput,
     FovuxHomeHealth,
@@ -219,3 +220,33 @@ def test_doctor_uses_shared_report() -> None:
 
     assert result.exit_code == 0
     collect.assert_called_once_with()
+
+
+def test_rotate_token_hides_raw_token_by_default(tmp_path: Path) -> None:
+    """Token rotation should not print the raw bearer token unless explicitly requested."""
+    sample_value = "unit-test-redaction-value"
+    with (
+        patch("fovux.cli.configure_logging"),
+        patch("fovux.cli.get_fovux_home", return_value=tmp_path),
+        patch("fovux.cli.rotate_auth_token", return_value=sample_value),
+    ):
+        result = runner.invoke(app, ["rotate-token"])
+
+    assert result.exit_code == 0
+    assert sample_value not in result.stdout
+    assert token_fingerprint(sample_value) in result.stdout
+    assert "--show-token" in result.stdout
+
+
+def test_rotate_token_show_token_opt_in_reveals_raw_token(tmp_path: Path) -> None:
+    """The explicit reveal flag should support manual local client setup."""
+    sample_value = "unit-test-redaction-value"
+    with (
+        patch("fovux.cli.configure_logging"),
+        patch("fovux.cli.get_fovux_home", return_value=tmp_path),
+        patch("fovux.cli.rotate_auth_token", return_value=sample_value),
+    ):
+        result = runner.invoke(app, ["rotate-token", "--show-token"])
+
+    assert result.exit_code == 0
+    assert sample_value in result.stdout

@@ -10,6 +10,7 @@ from fovux.core.errors import FovuxError, FovuxTrainingRunNotFoundError
 from fovux.core.paths import ensure_fovux_dirs
 from fovux.core.runs import get_registry
 from fovux.core.tooling import tool_event
+from fovux.core.validation import ensure_within_root
 from fovux.schemas.management import RunArchiveInput, RunArchiveOutput
 from fovux.server import mcp
 
@@ -31,10 +32,10 @@ def _run_run_archive(inp: RunArchiveInput) -> RunArchiveOutput:
     if str(record.status) == "running":
         raise FovuxError(f"Run '{inp.run_id}' is still running and cannot be archived.")
 
-    run_dir = Path(record.run_path)
-    archive_dir = paths.home / "archive"
+    run_dir = ensure_within_root(Path(record.run_path), paths.runs)
+    archive_dir = ensure_within_root(paths.home / "archive", paths.home)
     archive_dir.mkdir(parents=True, exist_ok=True)
-    archive_path = archive_dir / f"{inp.run_id}.tar.gz"
+    archive_path = ensure_within_root(archive_dir / f"{inp.run_id}.tar.gz", archive_dir)
     archived_files = sum(1 for path in run_dir.rglob("*") if path.is_file())
 
     with tarfile.open(archive_path, "w:gz") as archive:

@@ -8,6 +8,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from fovux.schemas.common import RunId
+
 
 class ModelArtifact(BaseModel):
     """Metadata for a tracked model artifact."""
@@ -54,7 +56,7 @@ class RunMetricSummary(BaseModel):
 class RunCompareInput(BaseModel):
     """Input for run_compare."""
 
-    run_ids: list[str] = Field(default_factory=list)
+    run_ids: list[RunId] = Field(default_factory=list)
     output_path: Path | None = None
 
 
@@ -70,7 +72,7 @@ class RunCompareOutput(BaseModel):
 class RunDeleteInput(BaseModel):
     """Input for run_delete."""
 
-    run_id: str
+    run_id: RunId
     delete_files: bool = True
     force: bool = False
 
@@ -86,7 +88,7 @@ class RunDeleteOutput(BaseModel):
 class RunTagInput(BaseModel):
     """Input for run_tag."""
 
-    run_id: str
+    run_id: RunId
     tags: list[str] = Field(default_factory=list)
 
 
@@ -100,7 +102,7 @@ class RunTagOutput(BaseModel):
 class RunArchiveInput(BaseModel):
     """Input for run_archive."""
 
-    run_id: str
+    run_id: RunId
     delete_original: bool = True
 
 

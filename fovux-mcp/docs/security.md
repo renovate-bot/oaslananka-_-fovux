@@ -11,19 +11,29 @@ Fovux v2.0.0 keeps `stdio` as the default MCP transport and treats the optional 
 
 ## Token lifecycle
 
-Generate or reveal the current token by starting the HTTP server once:
+Generate the current token by starting the HTTP server once:
 
 ```bash
 fovux-mcp serve --http
 ```
 
-Rotate the token explicitly:
+Rotate the token explicitly. The raw token is hidden by default; use the fingerprint and token file path for logs and support bundles:
 
 ```bash
 fovux-mcp rotate-token
 ```
 
+For one-time manual local client configuration, reveal the raw token explicitly:
+
+```bash
+fovux-mcp rotate-token --show-token
+```
+
 The VS Code extension reads the token from the same `FOVUX_HOME` directory, so `fovux.home` in Studio and `FOVUX_HOME` for `fovux-mcp` must point at the same location.
+
+## HTTP tool policy
+
+The HTTP transport exposes a fixed allow-list with per-tool timeouts and concurrency limits. Filesystem-writing, mutating, long-running, or destructive tools require a trusted local UI confirmation field (`confirm=true`) before execution. Audit logs record token fingerprints, origin, tool name, redacted argument hashes, status, duration, and failure class without storing raw bearer tokens or full payloads.
 
 ## Rate limiting
 

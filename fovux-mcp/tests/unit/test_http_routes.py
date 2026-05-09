@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
+import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -19,8 +21,10 @@ from fovux.http.routes import (
     _load_metric_payloads,
     _load_metrics_jsonl,
     _metric_event_stream,
+    _release_semaphore_after_worker,
     _resolve_run_dir,
 )
+from fovux.http.tool_proxy import HTTP_TOOL_POLICIES, HttpToolPolicy
 
 
 def _seed_run(tmp_fovux_home: Path, run_id: str = "run_stream") -> tuple[Path, RunRegistry]:
@@ -318,12 +322,30 @@ def test_tool_proxy_fovux_error_returns_400(tmp_fovux_home: Path) -> None:
     assert detail["code"].startswith("FOVUX_DATASET_")
 
 
+def test_tool_proxy_validation_error_returns_422(tmp_fovux_home: Path) -> None:
+    """Tool schema validation errors should be returned as client errors."""
+    with TestClient(create_app()) as client:
+        response = client.post(
+            "/tools/train_start",
+            json={"dataset_path": ".", "name": "../x", "confirm": True},
+            headers=_auth_headers(client),
+        )
+
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert detail["code"] == "FOVUX_HTTP_002"
+
+
 def test_train_start_has_stricter_rate_limit_than_readonly_tools(tmp_fovux_home: Path) -> None:
     """Training launch attempts should be rate-limited more aggressively than read-only tools."""
     with TestClient(create_app()) as client:
         headers = _auth_headers(client)
         responses = [
-            client.post("/tools/train_start", json={"dataset_path": "/missing"}, headers=headers)
+            client.post(
+                "/tools/train_start",
+                json={"dataset_path": "/missing", "confirm": True},
+                headers=headers,
+            )
             for _ in range(6)
         ]
         readonly = client.post("/tools/model_list", json={}, headers=headers)
@@ -331,6 +353,96 @@ def test_train_start_has_stricter_rate_limit_than_readonly_tools(tmp_fovux_home:
     assert [response.status_code for response in responses[:5]] == [400, 400, 400, 400, 400]
     assert responses[5].status_code == 429
     assert readonly.status_code == 200
+
+
+def test_tool_proxy_rejects_saturated_concurrency_limit(tmp_fovux_home: Path) -> None:
+    """Saturated tool semaphores should reject immediately instead of waiting."""
+    with TestClient(create_app()) as client:
+        client.app.state.tool_semaphores["model_list"] = asyncio.Semaphore(0)
+        response = client.post("/tools/model_list", json={}, headers=_auth_headers(client))
+
+    assert response.status_code == 429
+    assert response.json()["detail"] == "Tool concurrency limit exceeded."
+
+
+def test_long_running_http_tools_require_confirmation() -> None:
+    """Expensive HTTP-exposed tools should require trusted UI confirmation."""
+    for tool_name in ("benchmark_latency", "eval_run", "infer_rtsp"):
+        assert HTTP_TOOL_POLICIES[tool_name].category == "long_running"
+        assert HTTP_TOOL_POLICIES[tool_name].requires_confirmation is True
+
+
+def test_tool_proxy_keeps_semaphore_until_timed_out_worker_finishes(
+    tmp_fovux_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Timed-out thread workers should still hold concurrency until they finish."""
+    worker_finished = threading.Event()
+    calls = 0
+
+    def invoke_tool(name: str, payload: dict[str, object]) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            time.sleep(0.15)
+            worker_finished.set()
+        return {"ok": True}
+
+    monkeypatch.setitem(
+        HTTP_TOOL_POLICIES,
+        "model_list",
+        HttpToolPolicy("read_only", 0.05, 1),
+    )
+    monkeypatch.setattr("fovux.http.tool_proxy.invoke_tool", invoke_tool)
+
+    with TestClient(create_app()) as client:
+        headers = _auth_headers(client)
+        first = client.post("/tools/model_list", json={}, headers=headers)
+        second = client.post("/tools/model_list", json={}, headers=headers)
+        assert worker_finished.wait(timeout=1.0)
+        deadline = time.time() + 1.0
+        while True:
+            third = client.post("/tools/model_list", json={}, headers=headers)
+            if third.status_code != 429 or time.time() >= deadline:
+                break
+            time.sleep(0.01)
+
+    assert first.status_code == 504
+    assert second.status_code == 429
+    assert third.status_code == 200
+
+
+def test_timed_out_worker_exception_is_logged_before_semaphore_release(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Background worker failures after a timeout should remain observable."""
+    events: list[tuple[str, dict[str, object]]] = []
+
+    class Logger:
+        def warning(self, event: str, **kwargs: object) -> None:
+            events.append((event, kwargs))
+
+        def error(self, event: str, **kwargs: object) -> None:
+            events.append((event, kwargs))
+
+    async def scenario() -> None:
+        semaphore = asyncio.Semaphore(0)
+        future: asyncio.Future[object] = asyncio.get_running_loop().create_future()
+        future.set_exception(RuntimeError("worker failed"))
+        callback = _release_semaphore_after_worker(semaphore)
+        callback(future)
+        await asyncio.wait_for(semaphore.acquire(), timeout=0.1)
+
+    monkeypatch.setattr("fovux.http.routes.get_logger", lambda _name: Logger())
+
+    asyncio.run(scenario())
+
+    assert events == [
+        (
+            "http_tool_worker_failed_after_timeout",
+            {"error_type": "RuntimeError", "error": "worker failed"},
+        )
+    ]
 
 
 def test_resolve_run_dir_returns_registered_path(tmp_fovux_home: Path) -> None:

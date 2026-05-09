@@ -15,6 +15,7 @@ export async function stopRun(target: RunItem | undefined): Promise<void> {
     const result = await client.invokeTool<{ message?: string }>("train_stop", {
       run_id: run.runId,
       force: false,
+      confirm: true,
     });
     void vscode.window.showInformationMessage(result.message ?? `Stopped ${run.runId}.`);
     void vscode.commands.executeCommand("fovux.refreshViews");
@@ -36,6 +37,7 @@ export async function resumeRun(target: RunItem | undefined): Promise<void> {
   try {
     const result = await client.invokeTool<{ run_id: string }>("train_resume", {
       run_id: run.runId,
+      confirm: true,
     });
     void vscode.window.showInformationMessage(`Resumed ${result.run_id}.`);
     void vscode.commands.executeCommand("fovux.refreshViews");
@@ -85,6 +87,7 @@ export async function deleteRun(target: RunItem | undefined): Promise<void> {
       run_id: run.runId,
       delete_files: true,
       force: false,
+      confirm: true,
     });
     void vscode.window.showInformationMessage(`Deleted ${run.runId}.`);
     void vscode.commands.executeCommand("fovux.refreshViews");
@@ -117,7 +120,7 @@ export async function tagRun(target: RunItem | undefined): Promise<void> {
     .filter(Boolean);
   const client = await ExtensionFovuxClient.create();
   try {
-    await client.invokeTool("run_tag", { run_id: run.runId, tags });
+    await client.invokeTool("run_tag", { run_id: run.runId, tags, confirm: true });
     void vscode.window.showInformationMessage(`Updated tags for ${run.runId}.`);
     void vscode.commands.executeCommand("fovux.refreshViews");
   } catch (error) {

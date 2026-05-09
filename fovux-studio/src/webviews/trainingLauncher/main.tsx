@@ -426,6 +426,7 @@ function TrainingLauncherApp(): JSX.Element {
       name: runName.trim() || undefined,
       force,
       max_concurrent_runs: Math.max(0, Math.floor(maxConcurrentRuns)),
+      confirm: true,
     };
   }
 

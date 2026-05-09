@@ -36,6 +36,13 @@ cd fovux/fovux-mcp
 uv sync --frozen --extra dev
 ```
 
+The Apache-2.0 core keeps YOLO engine dependencies optional. Install the `yolo` extra only when
+the Ultralytics backend and its separate AGPL/commercial terms are appropriate for your use case:
+
+```bash
+uv sync --frozen --extra dev --extra yolo
+```
+
 ## Quick start (5 minutes)
 
 See [docs/getting-started.md](docs/getting-started.md) for the full tutorial.
@@ -44,7 +51,7 @@ See [docs/getting-started.md](docs/getting-started.md) for the full tutorial.
 # 1. Install from source
 git clone https://github.com/oaslananka/fovux
 cd fovux/fovux-mcp
-uv sync --frozen --extra dev
+uv sync --frozen --extra dev --extra yolo
 uv run fovux-mcp doctor
 
 # 2. Configure your MCP client (example: Cursor / Windsurf / VS Code)
@@ -151,4 +158,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). All contributions welcome.
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE) for third-party licenses (including Ultralytics AGPL-3.0 usage terms).
+Fovux core is Apache-2.0. The Ultralytics YOLO backend is optional and carries its own AGPL/commercial licensing boundary; install the `yolo` extra only when that backend is appropriate for your use case. See [LICENSE](LICENSE), [NOTICE](NOTICE), and [docs/adr/0003-ultralytics-adapter-boundary.md](docs/adr/0003-ultralytics-adapter-boundary.md).

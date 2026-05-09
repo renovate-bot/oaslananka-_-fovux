@@ -373,6 +373,7 @@ function ExportWizardApp(): JSX.Element {
           checkpoint,
           calibration_dataset: calibrationDataset,
           output_path: outputPath || undefined,
+          confirm: true,
         },
       );
     }
@@ -382,6 +383,7 @@ function ExportWizardApp(): JSX.Element {
         checkpoint,
         output_path: outputPath || undefined,
         parity_check: verifyParity,
+        confirm: true,
       });
     }
 
@@ -389,6 +391,7 @@ function ExportWizardApp(): JSX.Element {
       checkpoint,
       output_path: outputPath || undefined,
       int8: quantize,
+      confirm: true,
     });
   }
 
@@ -404,6 +407,7 @@ function ExportWizardApp(): JSX.Element {
             (format === "tflite" ? "tflite" : "onnxruntime"),
           num_warmup: 2,
           num_iterations: 5,
+          confirm: true,
         },
       );
       setRecommendation(recommendExportTarget(benchmark));

@@ -17,6 +17,7 @@ from fovux.core.errors import (
     FovuxTrainingSubprocessError,
 )
 from fovux.core.paths import FovuxPaths
+from fovux.core.processes import TerminationResult
 from fovux.core.runs import RunRegistry, get_registry
 from fovux.schemas.training import (
     TrainResumeInput,
@@ -184,7 +185,10 @@ def test_train_start_writes_json_pid_file_atomically(fake_fovux_home):
     with patch("fovux.tools.train_start.subprocess.Popen", return_value=_fake_popen(pid=4567)):
         out = _run_train_start(TrainStartInput(dataset_path=FIXTURES / "mini_yolo"))
 
-    assert json.loads((out.run_path / "pid.txt").read_text(encoding="utf-8")) == {"pid": 4567}
+    payload = json.loads((out.run_path / "pid.txt").read_text(encoding="utf-8"))
+    assert payload["pid"] == 4567
+    assert payload["process"]["pid"] == 4567
+    assert isinstance(payload["process"]["command_fingerprint"], str)
 
 
 def test_train_start_defaults_to_auto_device() -> None:
@@ -285,7 +289,14 @@ def test_train_stop_updates_status(fake_fovux_home):
                 dataset_path=FIXTURES / "mini_yolo",
             )
         )
-    with patch("fovux.tools.train_stop._kill_pid", return_value="Signal sent."):
+    with patch(
+        "fovux.tools.train_stop.terminate_process_tree",
+        return_value=TerminationResult(
+            status="terminated",
+            signal_sent=True,
+            message="Signal sent.",
+        ),
+    ):
         stop_out = _run_train_stop(TrainStopInput(run_id=start_out.run_id))
     assert stop_out.status == "stopped"
 
@@ -298,11 +309,60 @@ def test_train_stop_noop_when_not_running(fake_fovux_home):
                 dataset_path=FIXTURES / "mini_yolo",
             )
         )
-    with patch("fovux.tools.train_stop._kill_pid", return_value="done"):
+    with patch(
+        "fovux.tools.train_stop.terminate_process_tree",
+        return_value=TerminationResult(status="terminated", signal_sent=True, message="done"),
+    ):
         _run_train_stop(TrainStopInput(run_id=start_out.run_id))
         stop2 = _run_train_stop(TrainStopInput(run_id=start_out.run_id))
     assert stop2.status == "stopped"
     assert "not running" in stop2.message.lower()
+
+
+def test_train_stop_refuses_pid_only_identity(fake_fovux_home):
+    """A PID without recorded start/cmd/cwd metadata must not be signalled."""
+    paths = FovuxPaths(fake_fovux_home)
+    registry = get_registry(paths.runs_db)
+    run_dir = paths.runs / "legacy_pid"
+    run_dir.mkdir(parents=True)
+    (run_dir / "pid.txt").write_text(json.dumps({"pid": 12345}), encoding="utf-8")
+    registry.create_run(
+        run_id="legacy_pid",
+        run_path=run_dir,
+        model="yolov8n.pt",
+        dataset_path=FIXTURES / "mini_yolo",
+        task="detect",
+        epochs=1,
+    )
+    registry.update_status("legacy_pid", "running", pid=12345)
+
+    with patch("fovux.tools.train_stop.terminate_process_tree") as terminate:
+        out = _run_train_stop(TrainStopInput(run_id="legacy_pid"))
+
+    terminate.assert_not_called()
+    assert out.status == "running"
+    assert "refusing" in out.message.lower()
+
+
+def test_train_stop_refuses_mismatched_process_identity(fake_fovux_home):
+    """A reused PID with mismatched process identity must stay untouched."""
+    with patch(
+        "fovux.tools.train_start.subprocess.Popen", return_value=_fake_popen(pid=os.getpid())
+    ):
+        start_out = _run_train_start(TrainStartInput(dataset_path=FIXTURES / "mini_yolo"))
+
+    with patch(
+        "fovux.tools.train_stop.terminate_process_tree",
+        return_value=TerminationResult(
+            status="mismatch",
+            signal_sent=False,
+            message="PID no longer matches.",
+        ),
+    ):
+        out = _run_train_stop(TrainStopInput(run_id=start_out.run_id))
+
+    assert out.status == "running"
+    assert "matches" in out.message
 
 
 def test_train_resume_unknown_run_raises(fake_fovux_home):

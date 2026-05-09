@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 from collections.abc import Iterable
 from pathlib import Path
@@ -12,6 +13,31 @@ from fovux.core.errors import FovuxPathValidationError
 from fovux.core.paths import get_fovux_home
 
 _BYTES_PER_MB = 1024 * 1024
+RUN_ID_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$"
+_RUN_ID_RE = re.compile(RUN_ID_PATTERN)
+_WINDOWS_RESERVED_NAMES = {
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
+    *(f"COM{index}" for index in range(1, 10)),
+    *(f"LPT{index}" for index in range(1, 10)),
+}
+
+
+def validate_run_id(run_id: str) -> str:
+    """Validate a user-supplied run identifier before path derivation."""
+    if not _RUN_ID_RE.fullmatch(run_id):
+        raise ValueError(
+            "run_id must start with an ASCII letter or digit and contain only "
+            "letters, digits, underscores, dots, and hyphens, up to 64 characters"
+        )
+    if run_id.endswith("."):
+        raise ValueError("run_id cannot end with a dot")
+    reserved_key = run_id.split(".", maxsplit=1)[0].upper()
+    if reserved_key in _WINDOWS_RESERVED_NAMES:
+        raise ValueError(f"run_id cannot use reserved device name '{run_id}'")
+    return run_id
 
 
 def resolve_local_path(path: Path) -> Path:

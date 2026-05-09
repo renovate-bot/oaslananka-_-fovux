@@ -27,6 +27,8 @@ signing behavior.
   fovux-mcp rotate-token
   ```
 
+- The default rotation output prints the token path and fingerprint only. Use
+  `fovux-mcp rotate-token --show-token` only for one-time local client setup.
 - After rotation, restart any MCP clients or restart the VS Code extension
   to reload the new token.
 
@@ -45,6 +47,13 @@ Token rotation procedure:
 The HTTP transport enforces a sliding-window rate limit of **100 POST requests per
 60 seconds per client IP**. Since the server binds to localhost only, this limit
 applies per local process.
+
+### HTTP Tool Policy
+
+HTTP tool calls use an explicit allow-list with per-tool timeouts, concurrency limits, and audit
+events. Mutating, filesystem-writing, long-running, and destructive tools require `confirm=true`
+from a trusted local UI action. Audit events include token fingerprints and argument hashes only;
+raw bearer tokens and full tool payloads are not logged.
 
 ### Reverse-Proxy Warning
 

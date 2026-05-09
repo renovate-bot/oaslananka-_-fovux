@@ -23,7 +23,6 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Image Processing",
 ]
 dependencies = [
-    "ultralytics>=8.4.41",
     "onnxruntime>=1.24.4",
     "onnx>=1.21.0",
     "opencv-python-headless>=4.13.0.92",
@@ -47,6 +46,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+yolo = ["ultralytics>=8.4.41"]
 gpu = ["onnxruntime-gpu>=1.24.4"]
 tensorrt = ["tensorrt>=10.7"]
 coreml = ["coremltools>=8.1 ; sys_platform == 'darwin'"]
@@ -171,7 +171,6 @@ omit = [
     # Entry points and integration-heavy adapters are validated by focused tests,
     # contract tests, or CI smoke paths; keep the gate on deterministic core code.
     "src/fovux/__main__.py",
-    "src/fovux/cli.py",
     "src/fovux/core/dataset_utils.py",
     "src/fovux/core/train_worker.py",
     "src/fovux/core/ultralytics_adapter.py",

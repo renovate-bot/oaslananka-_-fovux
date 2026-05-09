@@ -15,11 +15,11 @@ import json
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from watchfiles import Change, awatch
 
 from fovux.core.checkpoints import (
@@ -240,17 +240,102 @@ def _stream_run_metrics_response(run_id: str, request: Request) -> StreamingResp
     )
 
 
+def _release_semaphore_after_worker(
+    semaphore: asyncio.Semaphore,
+) -> Callable[[asyncio.Future[Any]], None]:
+    logger = get_logger(__name__)
+
+    def _release(task: asyncio.Future[Any]) -> None:
+        try:
+            error = task.exception()
+        except asyncio.CancelledError:
+            error = None
+        except Exception as exc:  # defensive: done callbacks must not raise into the event loop
+            logger.warning(
+                "http_tool_worker_exception_inspection_failed",
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
+        else:
+            if error is not None:
+                logger.error(
+                    "http_tool_worker_failed_after_timeout",
+                    error_type=type(error).__name__,
+                    error=str(error),
+                )
+        finally:
+            semaphore.release()
+
+    return _release
+
+
 @router.post("/tools/{name}")
 async def proxy_tool(
+    request: Request,
     name: str,
     payload: dict[str, object] = _EMPTY_PAYLOAD,
 ) -> JSONResponse:
     """Invoke a local Fovux tool through the HTTP transport."""
-    from fovux.http.tool_proxy import available_tools, invoke_tool
+    from fovux.core.auth import token_fingerprint
+    from fovux.http.tool_proxy import (
+        HttpToolPolicyError,
+        available_tools,
+        invoke_tool,
+        payload_hash,
+        policy_for_tool,
+    )
 
+    logger = get_logger(__name__)
+    origin = request.headers.get("origin")
+    if origin is None and request.client is not None:
+        origin = request.client.host
+    actor = token_fingerprint(str(request.app.state.auth_token))
+    args_hash = payload_hash(payload)
+    started = time.monotonic()
     try:
-        result = await asyncio.to_thread(invoke_tool, name, payload)
+        policy = policy_for_tool(name)
+        semaphores = cast(dict[str, asyncio.Semaphore], request.app.state.tool_semaphores)
+        semaphore = semaphores[name]
+        try:
+            await asyncio.wait_for(semaphore.acquire(), timeout=0.01)
+        except TimeoutError as exc:
+            logger.warning(
+                "http_tool_audit",
+                actor=actor,
+                origin=origin,
+                tool=name,
+                args_hash=args_hash,
+                status="rejected",
+                duration_ms=0,
+                failure_class="concurrency_limit",
+            )
+            raise HTTPException(status_code=429, detail="Tool concurrency limit exceeded.") from exc
+        release_deferred = False
+        try:
+            worker_task = asyncio.create_task(asyncio.to_thread(invoke_tool, name, payload))
+            try:
+                result = await asyncio.wait_for(
+                    asyncio.shield(worker_task),
+                    timeout=policy.timeout_seconds,
+                )
+            except TimeoutError:
+                worker_task.add_done_callback(_release_semaphore_after_worker(semaphore))
+                release_deferred = True
+                raise
+        finally:
+            if not release_deferred:
+                semaphore.release()
     except KeyError as exc:
+        logger.warning(
+            "http_tool_audit",
+            actor=actor,
+            origin=origin,
+            tool=name,
+            args_hash=args_hash,
+            status="rejected",
+            duration_ms=int((time.monotonic() - started) * 1000),
+            failure_class="unknown_or_disabled_tool",
+        )
         raise HTTPException(
             status_code=404,
             detail={
@@ -258,13 +343,75 @@ async def proxy_tool(
                 "available_tools": available_tools(),
             },
         ) from exc
+    except TimeoutError as exc:
+        logger.warning(
+            "http_tool_audit",
+            actor=actor,
+            origin=origin,
+            tool=name,
+            args_hash=args_hash,
+            status="failed",
+            duration_ms=int((time.monotonic() - started) * 1000),
+            failure_class="timeout",
+        )
+        raise HTTPException(status_code=504, detail="Tool execution timed out.") from exc
+    except HttpToolPolicyError as exc:
+        logger.warning(
+            "http_tool_audit",
+            actor=actor,
+            origin=origin,
+            tool=name,
+            args_hash=args_hash,
+            status="rejected",
+            duration_ms=int((time.monotonic() - started) * 1000),
+            failure_class="policy",
+        )
+        detail = ErrorDetail(code=exc.code, message=exc.message, hint=exc.hint)
+        raise HTTPException(status_code=403, detail=detail.model_dump(mode="json")) from exc
+    except ValidationError as exc:
+        logger.warning(
+            "http_tool_audit",
+            actor=actor,
+            origin=origin,
+            tool=name,
+            args_hash=args_hash,
+            status="failed",
+            duration_ms=int((time.monotonic() - started) * 1000),
+            failure_class="validation_error",
+        )
+        detail = ErrorDetail(
+            code="FOVUX_HTTP_002",
+            message="Tool payload validation failed.",
+            hint=str(exc),
+        )
+        raise HTTPException(status_code=422, detail=detail.model_dump(mode="json")) from exc
     except FovuxError as exc:
+        logger.warning(
+            "http_tool_audit",
+            actor=actor,
+            origin=origin,
+            tool=name,
+            args_hash=args_hash,
+            status="failed",
+            duration_ms=int((time.monotonic() - started) * 1000),
+            failure_class=exc.code,
+        )
         detail = ErrorDetail(code=exc.code, message=exc.message, hint=exc.hint)
         raise HTTPException(
             status_code=400,
             detail=detail.model_dump(mode="json"),
         ) from exc
 
+    logger.info(
+        "http_tool_audit",
+        actor=actor,
+        origin=origin,
+        tool=name,
+        args_hash=args_hash,
+        status="success",
+        duration_ms=int((time.monotonic() - started) * 1000),
+        failure_class=None,
+    )
     return JSONResponse(result)
 
 

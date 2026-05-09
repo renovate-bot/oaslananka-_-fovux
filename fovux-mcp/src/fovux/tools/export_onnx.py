@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from fovux.core.checkpoints import resolve_checkpoint
 from fovux.core.errors import FovuxExportParityError
@@ -118,7 +118,6 @@ def _check_parity(
     import importlib
 
     import numpy as np
-    import torch
 
     try:
         ort: Any = importlib.import_module("onnxruntime")
@@ -167,9 +166,9 @@ def _check_parity(
             )
         diff = float(np.max(np.abs(pt_array - onnx_array))) if pt_array.size else 0.0
         max_diff = max(max_diff, diff)
-        if not torch.allclose(
-            torch.from_numpy(pt_array),
-            torch.from_numpy(onnx_array),
+        if not np.allclose(
+            pt_array,
+            onnx_array,
             atol=inp.parity_tolerance,
             rtol=inp.parity_tolerance,
         ):
@@ -179,8 +178,7 @@ def _check_parity(
 
 
 def _forward_pytorch(pt_path: Path, dummy: object) -> list[Any]:
-    import torch
-
+    torch = cast(Any, _load_torch())
     pt_model = load_yolo_model(pt_path)
     raw_model = getattr(pt_model, "model", None)
     if raw_model is None:
@@ -193,6 +191,18 @@ def _forward_pytorch(pt_path: Path, dummy: object) -> list[Any]:
     with torch.no_grad():
         outputs = raw_model(tensor)
     return _flatten_outputs(outputs)
+
+
+def _load_torch() -> object:
+    import importlib
+
+    try:
+        return importlib.import_module("torch")
+    except ImportError as exc:
+        raise FovuxExportParityError(
+            "PyTorch is not available for ONNX parity checking.",
+            hint="Install the `yolo` extra to enable Ultralytics/PyTorch-backed parity checks.",
+        ) from exc
 
 
 def _flatten_outputs(outputs: object) -> list[Any]:

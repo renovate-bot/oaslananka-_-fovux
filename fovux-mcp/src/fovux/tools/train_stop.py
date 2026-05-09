@@ -5,12 +5,15 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any
 
 from fovux.core.errors import FovuxTrainingRunNotFoundError
 from fovux.core.paths import FovuxPaths, get_fovux_home
+from fovux.core.processes import load_process_identity, terminate_process_tree
 from fovux.core.runs import get_registry
 from fovux.core.tooling import tool_event
+from fovux.core.validation import ensure_within_root
 from fovux.schemas.training import TrainStopInput, TrainStopOutput
 from fovux.server import mcp
 
@@ -43,7 +46,42 @@ def _run_train_stop(inp: TrainStopInput) -> TrainStopOutput:
     message = "No PID recorded — status updated without signalling."
 
     if pid is not None:
-        message = _kill_pid(pid, force=inp.force)
+        run_dir = ensure_within_root(Path(record.run_path), paths.runs)
+        identity = load_process_identity(run_dir, pid)
+        if identity is None:
+            registry.update_extra(
+                inp.run_id,
+                {
+                    "process_stale": True,
+                    "stop_failure_class": "missing_process_identity",
+                },
+            )
+            return TrainStopOutput(
+                run_id=inp.run_id,
+                status=status,
+                message=(
+                    "Recorded process identity is missing or incomplete; "
+                    "refusing to signal a PID by number alone."
+                ),
+            )
+        result = terminate_process_tree(identity, force=inp.force)
+        message = result.message
+        if result.status == "mismatch":
+            registry.update_extra(
+                inp.run_id,
+                {
+                    "process_stale": True,
+                    "stop_failure_class": "process_identity_mismatch",
+                },
+            )
+            return TrainStopOutput(run_id=inp.run_id, status=status, message=message)
+        registry.update_extra(
+            inp.run_id,
+            {
+                "process_stop_status": result.status,
+                "process_signal_sent": result.signal_sent,
+            },
+        )
 
     registry.update_status(inp.run_id, "stopped")
     return TrainStopOutput(run_id=inp.run_id, status="stopped", message=message)

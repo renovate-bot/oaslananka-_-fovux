@@ -1,3 +1,5 @@
+import { randomBytes } from "node:crypto";
+
 import * as vscode from "vscode";
 
 export function createWebviewHtml(
@@ -9,7 +11,7 @@ export function createWebviewHtml(
   const bundleUri = webview.asWebviewUri(
     vscode.Uri.joinPath(extensionUri, "out", ...entryPath.split("/"))
   );
-  const nonce = createNonce();
+  const nonce = getNonce();
   const serializedState = JSON.stringify(initialState).replace(/</g, "\\u003c");
   const escapedBundleUri = bundleUri.toString().replace(/\\/g, "\\\\").replace(/'/g, "\\'");
   const csp = [
@@ -103,6 +105,6 @@ export function createWebviewHtml(
 </html>`;
 }
 
-function createNonce(): string {
-  return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+export function getNonce(): string {
+  return randomBytes(16).toString("base64url");
 }

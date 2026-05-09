@@ -920,7 +920,6 @@ dependencies = [
     { name = "structlog" },
     { name = "tomli-w" },
     { name = "typer" },
-    { name = "ultralytics" },
     { name = "uvicorn", extra = ["standard"] },
     { name = "watchfiles" },
 ]
@@ -954,6 +953,9 @@ gpu = [
 ]
 tensorrt = [
     { name = "tensorrt" },
+]
+yolo = [
+    { name = "ultralytics" },
 ]
 
 [package.metadata]
@@ -997,11 +999,11 @@ requires-dist = [
     { name = "tomli-w", specifier = ">=1.2" },
     { name = "typer", specifier = ">=0.24" },
     { name = "types-pillow", marker = "extra == 'dev'" },
-    { name = "ultralytics", specifier = ">=8.4.41" },
+    { name = "ultralytics", marker = "extra == 'yolo'", specifier = ">=8.4.41" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.45" },
     { name = "watchfiles", specifier = ">=1.1" },
 ]
-provides-extras = ["gpu", "tensorrt", "coreml", "dev"]
+provides-extras = ["yolo", "gpu", "tensorrt", "coreml", "dev"]
 
 [[package]]
 name = "fqdn"

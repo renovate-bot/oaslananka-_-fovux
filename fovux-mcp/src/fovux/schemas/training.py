@@ -7,6 +7,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from fovux.schemas.common import RunId
+
 
 class TrainStartInput(BaseModel):
     """Input for train_start tool."""
@@ -18,7 +20,7 @@ class TrainStartInput(BaseModel):
     imgsz: int = 640
     device: str = "auto"
     task: Literal["detect", "segment", "classify", "pose", "obb"] = "detect"
-    name: str | None = None
+    name: RunId | None = None
     force: bool = False
     max_concurrent_runs: int = 1
     tags: list[str] = Field(default_factory=list)
@@ -28,7 +30,7 @@ class TrainStartInput(BaseModel):
 class TrainStartOutput(BaseModel):
     """Output from train_start tool."""
 
-    run_id: str
+    run_id: RunId
     status: str
     pid: int | None
     run_path: Path
@@ -37,13 +39,13 @@ class TrainStartOutput(BaseModel):
 class TrainStatusInput(BaseModel):
     """Input for train_status tool."""
 
-    run_id: str
+    run_id: RunId
 
 
 class TrainStatusOutput(BaseModel):
     """Output from train_status tool."""
 
-    run_id: str
+    run_id: RunId
     status: str
     pid: int | None
     elapsed_seconds: float | None
@@ -55,7 +57,7 @@ class TrainStatusOutput(BaseModel):
 class TrainStopInput(BaseModel):
     """Input for train_stop tool."""
 
-    run_id: str
+    run_id: RunId
     force: bool = False
 
 
@@ -70,7 +72,7 @@ class TrainStopOutput(BaseModel):
 class TrainResumeInput(BaseModel):
     """Input for train_resume tool."""
 
-    run_id: str
+    run_id: RunId
     epochs: int | None = None
 
 

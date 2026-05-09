@@ -14,6 +14,8 @@ using a STRIDE-inspired framework.
 - **Description:** FastAPI server on `127.0.0.1:7823`.
 - **Trust level:** Authenticated via bearer token. Bound to loopback only.
 - **Threats:** Token leakage, localhost bypass (e.g., DNS rebinding).
+- **Container note:** The Docker image listens on the container bridge interface so
+  published ports work; `docker-compose.yml` binds the host side to `127.0.0.1`.
 
 ### Subprocess Training
 - **Description:** Ultralytics training runs spawned as child processes.
@@ -42,7 +44,7 @@ using a STRIDE-inspired framework.
 |---|---|
 | Path traversal in tool inputs | All file paths validated against `FOVUX_HOME` and allowed roots |
 | Token leakage | Bearer token stored with restrictive file permissions; rotatable via `fovux-mcp rotate-token` |
-| DNS rebinding | HTTP server binds to `127.0.0.1` only, not `0.0.0.0` |
+| DNS rebinding | HTTP server binds to `127.0.0.1` by default and does not bind to all interfaces unless explicitly configured |
 | Zombie processes | Training worker writes PID and status atomically; `train_stop` uses process group kill |
 | Malicious ONNX | Only user-provided local models are loaded; no remote model download |
 | CI token exposure | Doppler secrets injected at runtime; never committed or logged |

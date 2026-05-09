@@ -7,8 +7,17 @@ escape the FOVUX_HOME sandbox.
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
 from fovux.core.tool_registry import resolve_tool
+from fovux.core.validation import validate_run_id
+from fovux.schemas.management import RunArchiveInput, RunCompareInput, RunDeleteInput, RunTagInput
+from fovux.schemas.training import (
+    TrainResumeInput,
+    TrainStartInput,
+    TrainStatusInput,
+    TrainStopInput,
+)
 
 # Tools that accept file paths as their first parameter
 FILE_PATH_TOOLS = [
@@ -60,3 +69,50 @@ def test_path_traversal_rejected(tool_name: str, payload: str) -> None:
                 f"Tool {tool_name} did not reject traversal payload '{payload}': "
                 f"raised {type(exc).__name__}: {exc}"
             ) from exc
+
+
+RUN_ID_TRAVERSAL_PAYLOADS = [
+    "../x",
+    "../../x",
+    "/" + "tmp/x",
+    r"C:\Windows\Temp\x",
+    r"..\x",
+    ".",
+    "..",
+    "CON",
+    "aux",
+    "run.",
+    "run/name",
+    r"run\name",
+    "run∕name",
+]
+
+
+@pytest.mark.parametrize("payload", RUN_ID_TRAVERSAL_PAYLOADS)
+def test_run_id_schema_rejects_traversal_payloads(payload: str) -> None:
+    """Run IDs are path components and must not accept traversal variants."""
+    schema_factories = [
+        lambda value: TrainStartInput(dataset_path=".", name=value),
+        lambda value: TrainStatusInput(run_id=value),
+        lambda value: TrainStopInput(run_id=value),
+        lambda value: TrainResumeInput(run_id=value),
+        lambda value: RunCompareInput(run_ids=[value]),
+        lambda value: RunDeleteInput(run_id=value),
+        lambda value: RunTagInput(run_id=value),
+        lambda value: RunArchiveInput(run_id=value),
+    ]
+
+    for factory in schema_factories:
+        with pytest.raises(ValidationError):
+            factory(payload)
+
+
+def test_validate_run_id_allows_safe_ascii_identifier() -> None:
+    """Safe run IDs should remain ergonomic for normal CLI and Studio users."""
+    assert validate_run_id("Run_01-edge.v2") == "Run_01-edge.v2"
+
+
+def test_validate_run_id_rejects_trailing_dot_collision() -> None:
+    """Windows-normalized trailing-dot run IDs should be rejected explicitly."""
+    with pytest.raises(ValueError, match="end with a dot"):
+        validate_run_id("run.")

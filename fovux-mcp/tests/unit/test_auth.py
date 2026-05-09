@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from fovux.core.auth import (
@@ -39,3 +40,4 @@ def test_token_fingerprint_is_short_sha256_prefix() -> None:
 
     assert first == second
     assert len(first) == 12
+    assert re.fullmatch(r"[0-9a-f]{12}", first)

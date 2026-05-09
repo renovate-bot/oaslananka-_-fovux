@@ -254,6 +254,7 @@ function DatasetInspectorApp(): JSX.Element {
           dataset_path: initial.datasetPath,
           output_path: splitOutputPath,
           overwrite: true,
+          confirm: true,
         },
       );
       setStatusMessage(`Split dataset written to ${result.output_path}.`);

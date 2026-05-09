@@ -10,7 +10,7 @@ import {
   getAuthToken,
   getFovuxBaseUrl,
 } from "../../src/fovux/extensionClient";
-import { createWebviewHtml } from "../../src/webviews/html";
+import { createWebviewHtml, getNonce } from "../../src/webviews/html";
 
 describe("Fovux client and webview host", () => {
   afterEach(() => {
@@ -92,5 +92,15 @@ describe("Fovux client and webview host", () => {
     expect(html).toContain("webviews/exportWizard/main.js");
     expect(html).toContain("window.__FOVUX_INITIAL_STATE__");
     expect(html).toContain("connect-src http://127.0.0.1:* https://127.0.0.1:*");
+    expect(html).toMatch(/script-src .*'nonce-[A-Za-z0-9_-]+'/);
+  });
+
+  it("generates cryptographic base64url CSP nonces", () => {
+    const first = getNonce();
+    const second = getNonce();
+
+    expect(first).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    expect(second).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    expect(first).not.toBe(second);
   });
 });
