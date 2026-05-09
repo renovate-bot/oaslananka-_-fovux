@@ -295,6 +295,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Mirror release refs and assets to personal repository
         env:
@@ -328,7 +329,7 @@ jobs:
             "target": "branch",
             "enforcement": "active",
             "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
-            "rules": [{ "type": "deletion" }, { "type": "non_fast_forward" }],
+            "rules": [{ "type": "deletion" }],
             "bypass_actors": []
           }
           JSON
@@ -337,6 +338,8 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --local --unset-all http.https://github.com/.extraheader || true
+          git config --global --unset-all http.https://github.com/.extraheader || true
           git fetch origin --tags
           git remote add personal "https://x-access-token:${MIRROR_PAT}@github.com/${PERSONAL_REPO}.git"
           git fetch personal +refs/heads/main:refs/remotes/personal/main --tags
@@ -344,15 +347,18 @@ jobs:
           personal_main="$(git rev-parse refs/remotes/personal/main)"
           org_main="$(git rev-parse HEAD)"
           if [[ "$personal_main" != "$org_main" ]]; then
-            if ! git merge-base --is-ancestor "$personal_main" "$org_main"; then
-              echo "::error::Personal and org main branches diverged; refusing to overwrite either repository."
-              exit 1
+            personal_tree="$(git rev-parse "refs/remotes/personal/main^{tree}")"
+            org_tree="$(git rev-parse "HEAD^{tree}")"
+            if [[ "$personal_tree" == "$org_tree" ]]; then
+              echo "Personal main already has the same tree as org main."
+            else
+              echo "Synchronizing personal main to org main with force-with-lease."
+              trap 'GH_TOKEN="$MIRROR_PAT" gh api -X PUT "repos/${PERSONAL_REPO}/rulesets/${personal_ruleset}" --input "$personal_final" >/dev/null || true' EXIT
+              GH_TOKEN="$MIRROR_PAT" gh api -X PUT "repos/${PERSONAL_REPO}/rulesets/${personal_ruleset}" --input "$transition" >/dev/null
+              git push personal "HEAD:refs/heads/main" --force-with-lease="refs/heads/main:${personal_main}"
+              GH_TOKEN="$MIRROR_PAT" gh api -X PUT "repos/${PERSONAL_REPO}/rulesets/${personal_ruleset}" --input "$personal_final" >/dev/null
+              trap - EXIT
             fi
-            trap 'GH_TOKEN="$MIRROR_PAT" gh api -X PUT "repos/${PERSONAL_REPO}/rulesets/${personal_ruleset}" --input "$personal_final" >/dev/null || true' EXIT
-            GH_TOKEN="$MIRROR_PAT" gh api -X PUT "repos/${PERSONAL_REPO}/rulesets/${personal_ruleset}" --input "$transition" >/dev/null
-            git push personal "HEAD:refs/heads/main"
-            GH_TOKEN="$MIRROR_PAT" gh api -X PUT "repos/${PERSONAL_REPO}/rulesets/${personal_ruleset}" --input "$personal_final" >/dev/null
-            trap - EXIT
           fi
 
           mirror_release_record() {
