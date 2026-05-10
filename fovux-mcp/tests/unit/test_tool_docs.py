@@ -6,7 +6,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+from tests.path_helpers import find_package_root
+
+REPO_ROOT = find_package_root(Path(__file__))
 CHECK_TOOL_DOCS = REPO_ROOT / "scripts" / "check_tool_docs.py"
 
 

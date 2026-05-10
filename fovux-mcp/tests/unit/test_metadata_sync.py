@@ -7,7 +7,9 @@ from pathlib import Path
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+from tests.path_helpers import find_monorepo_root
+
+REPO_ROOT = find_monorepo_root(Path(__file__))
 
 
 def _read_pyproject_version() -> str:

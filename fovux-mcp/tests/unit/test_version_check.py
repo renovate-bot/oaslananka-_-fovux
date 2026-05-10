@@ -6,7 +6,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+from tests.path_helpers import find_monorepo_root
+
+REPO_ROOT = find_monorepo_root(Path(__file__))
 CHECK_VERSIONS = REPO_ROOT / "scripts" / "check_versions.py"
 
 

@@ -14,7 +14,9 @@ from pathlib import Path
 import pytest
 import requests
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+from tests.path_helpers import find_package_root
+
+REPO_ROOT = find_package_root(Path(__file__))
 SERVER_PORT = 17823  # Use a non-default port to avoid conflicts
 
 

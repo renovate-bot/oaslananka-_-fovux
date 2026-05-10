@@ -8,10 +8,12 @@ import sys
 import tomllib
 from pathlib import Path
 
+from tests.path_helpers import find_package_root
+
 
 def test_core_import_does_not_import_ultralytics() -> None:
     """Importing Fovux core modules should not load the optional YOLO backend."""
-    project_root = Path(__file__).resolve().parents[2]
+    project_root = find_package_root(Path(__file__))
     env = {
         **os.environ,
         "PYTHONPATH": os.pathsep.join(
@@ -37,7 +39,7 @@ def test_core_import_does_not_import_ultralytics() -> None:
 
 def test_ultralytics_is_declared_as_optional_extra() -> None:
     """The package metadata should keep AGPL/commercial-boundary deps optional."""
-    pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    pyproject = find_package_root(Path(__file__)) / "pyproject.toml"
     payload = tomllib.loads(pyproject.read_text(encoding="utf-8"))
 
     dependencies = payload["project"]["dependencies"]

@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from tests.path_helpers import find_package_root
 
 from fovux.core.auth import token_fingerprint
 from fovux.http.app import (
@@ -18,7 +19,7 @@ from fovux.http.app import (
     warn_if_nonlocal_host,
 )
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = find_package_root(Path(__file__))
 
 
 @pytest.mark.security
