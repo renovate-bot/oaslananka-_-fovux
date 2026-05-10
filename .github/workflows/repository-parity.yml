@@ -40,10 +40,41 @@ jobs:
           trap 'rm -rf "$tmp"' EXIT
 
           git ls-remote "https://github.com/${PERSONAL_REPO}.git" \
-            'refs/heads/*' 'refs/tags/*' | sort >"$tmp/personal-refs"
+            'refs/heads/*' | sort -k2,2 >"$tmp/personal-heads-raw"
           git ls-remote "https://github.com/${ORG_REPO}.git" \
-            'refs/heads/*' 'refs/tags/*' | sort >"$tmp/org-refs"
-          diff -u "$tmp/personal-refs" "$tmp/org-refs"
+            'refs/heads/*' | sort -k2,2 >"$tmp/org-heads-raw"
+          awk '{print $2}' "$tmp/personal-heads-raw" >"$tmp/personal-heads"
+          awk '{print $2}' "$tmp/org-heads-raw" >"$tmp/org-heads"
+          diff -u "$tmp/personal-heads" "$tmp/org-heads"
+
+          git ls-remote "https://github.com/${PERSONAL_REPO}.git" \
+            'refs/tags/*' | sort >"$tmp/personal-tags"
+          git ls-remote "https://github.com/${ORG_REPO}.git" \
+            'refs/tags/*' | sort >"$tmp/org-tags"
+          diff -u "$tmp/personal-tags" "$tmp/org-tags"
+
+          git init -q "$tmp/personal-git"
+          git -C "$tmp/personal-git" remote add origin "https://github.com/${PERSONAL_REPO}.git"
+          git init -q "$tmp/org-git"
+          git -C "$tmp/org-git" remote add origin "https://github.com/${ORG_REPO}.git"
+
+          while read -r ref; do
+            branch="${ref#refs/heads/}"
+            personal_sha="$(awk -v ref="$ref" '$2 == ref { print $1; exit }' "$tmp/personal-heads-raw")"
+            org_sha="$(awk -v ref="$ref" '$2 == ref { print $1; exit }' "$tmp/org-heads-raw")"
+            if [[ -z "$personal_sha" || -z "$org_sha" ]]; then
+              echo "::error::Missing SHA snapshot for ${branch}."
+              exit 1
+            fi
+            git -C "$tmp/personal-git" fetch -q --depth=1 origin "$personal_sha"
+            git -C "$tmp/org-git" fetch -q --depth=1 origin "$org_sha"
+            personal_tree="$(git -C "$tmp/personal-git" rev-parse "FETCH_HEAD^{tree}")"
+            org_tree="$(git -C "$tmp/org-git" rev-parse "FETCH_HEAD^{tree}")"
+            if [[ "$personal_tree" != "$org_tree" ]]; then
+              echo "::error::Branch content differs for ${branch}."
+              exit 1
+            fi
+          done <"$tmp/personal-heads"
 
           gh api "repos/${PERSONAL_REPO}" \
             --jq '{default_branch,has_issues,has_projects,has_wiki,delete_branch_on_merge}' \
