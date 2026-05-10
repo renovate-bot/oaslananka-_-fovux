@@ -13,13 +13,18 @@ def _find_root(start: Path, markers: tuple[tuple[str, ...], ...], label: str) ->
     for parent in (start, *start.parents):
         if all(_has_marker(parent, marker) for marker in markers):
             return parent
-    raise AssertionError(f"Could not locate {label}")
+    raise RuntimeError(f"Could not locate {label} from start={start} with markers={markers}")
 
 
 def find_package_root(start: Path) -> Path:
     return _find_root(
         start.resolve(),
-        (("pyproject.toml",), ("src", "fovux")),
+        (
+            ("pyproject.toml",),
+            ("Dockerfile",),
+            ("scripts", "check_tool_docs.py"),
+            ("src", "fovux"),
+        ),
         "fovux-mcp package root",
     )
 
