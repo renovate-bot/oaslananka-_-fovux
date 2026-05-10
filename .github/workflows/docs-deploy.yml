@@ -60,8 +60,8 @@ jobs:
           git remote add personal "https://x-access-token:${GH_TOKEN}@github.com/${PERSONAL_REPO}.git"
           git fetch origin gh-pages
           push_args=(--force-with-lease)
-          if git ls-remote --exit-code --heads personal gh-pages >/dev/null; then
-            git fetch personal +refs/heads/gh-pages:refs/remotes/personal/gh-pages
+          if git -c http.https://github.com/.extraheader= ls-remote --exit-code --heads personal gh-pages >/dev/null; then
+            git -c http.https://github.com/.extraheader= fetch personal +refs/heads/gh-pages:refs/remotes/personal/gh-pages
             push_args=(--force-with-lease=refs/heads/gh-pages:refs/remotes/personal/gh-pages)
           fi
-          git push personal "${push_args[@]}" refs/remotes/origin/gh-pages:refs/heads/gh-pages
+          git -c http.https://github.com/.extraheader= push personal "${push_args[@]}" refs/remotes/origin/gh-pages:refs/heads/gh-pages
