@@ -5,6 +5,13 @@ All notable changes to `fovux-mcp` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [4.1.8](https://github.com/oaslananka-lab/fovux/compare/fovux-mcp-v4.1.7...fovux-mcp-v4.1.8) (2026-05-10)
+
+
+### Bug Fixes
+
+* **ci:** repair maintenance workflow checks ([#22](https://github.com/oaslananka-lab/fovux/issues/22)) ([8498bfd](https://github.com/oaslananka-lab/fovux/commit/8498bfde26ac88f1ecf92a89ca62bd39f56412c9))
+
 ## [4.1.7](https://github.com/oaslananka-lab/fovux/compare/fovux-mcp-v4.1.6...fovux-mcp-v4.1.7) (2026-05-09)
 
 

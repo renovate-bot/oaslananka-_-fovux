@@ -4,6 +4,13 @@ All notable changes to `fovux-studio` are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.1.8](https://github.com/oaslananka-lab/fovux/compare/fovux-studio-v4.1.7...fovux-studio-v4.1.8) (2026-05-10)
+
+
+### Miscellaneous Chores
+
+* **fovux-studio:** Synchronize fovux versions
+
 ## [4.1.7](https://github.com/oaslananka-lab/fovux/compare/fovux-studio-v4.1.6...fovux-studio-v4.1.7) (2026-05-09)
 
 
