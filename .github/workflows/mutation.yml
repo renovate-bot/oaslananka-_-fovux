@@ -42,15 +42,21 @@ jobs:
           uv run --with mutmut mutmut run
 
       - name: Report
+        if: always()
         working-directory: fovux-mcp
         run: |
           set -euo pipefail
-          uv run --with mutmut mutmut results
-          uv run --with mutmut mutmut html
+          if uv run --with mutmut mutmut results | tee mutation-results.txt; then
+            echo "Mutation results captured."
+          else
+            status=$?
+            echo "Mutation results command exited with status ${status}; report captured."
+          fi
 
       - name: Upload mutation report
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: mutation-report
-          path: fovux-mcp/html/
+          path: fovux-mcp/mutation-results.txt
           retention-days: 14
