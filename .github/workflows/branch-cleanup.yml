@@ -34,8 +34,7 @@ jobs:
             echo
             echo "## Branches older than 90 days (no open PR)"
             gh api -X GET "/repos/${{ github.repository }}/branches?per_page=100" --jq '.[].name' \
-              | grep -Ev '^(main|master|develop|gh-pages)$' \
-              | grep -Ev '^(release|hotfix)/' \
+              | awk '!/^(main|master|develop|gh-pages)$/ && !/^(release|hotfix)\//' \
               | while read -r br; do
                   open=$(gh pr list --repo "${{ github.repository }}" --head "$br" --state open --json number --jq 'length')
                   [ "$open" -gt 0 ] && continue

@@ -39,9 +39,7 @@ jobs:
         working-directory: fovux-mcp
         run: |
           set -euo pipefail
-          uv run --with mutmut mutmut run \
-            --paths-to-mutate src/fovux \
-            --runner "uv run pytest -x --no-header -q -m 'not slow and not integration and not gpu'"
+          uv run --with mutmut mutmut run
 
       - name: Report
         working-directory: fovux-mcp

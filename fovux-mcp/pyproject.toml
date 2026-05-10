@@ -162,6 +162,15 @@ filterwarnings = [
     "ignore:Palette images with Transparency expressed in bytes should be converted to RGBA images:UserWarning:PIL.Image",
 ]
 
+[tool.mutmut]
+paths_to_mutate = ["src/fovux"]
+pytest_add_cli_args_test_selection = [
+    "tests",
+    "-m",
+    "not slow and not integration and not gpu",
+]
+pytest_add_cli_args = ["--no-header", "-q"]
+
 [tool.coverage.run]
 source = ["src/fovux"]
 omit = [
