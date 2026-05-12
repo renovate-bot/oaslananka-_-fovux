@@ -25,8 +25,8 @@ importers:
         specifier: ^19.2.3
         version: 19.2.3(@types/react@19.2.14)
       '@types/vscode':
-        specifier: 1.118.0
-        version: 1.118.0
+        specifier: 1.98.0
+        version: 1.98.0
       '@typescript-eslint/eslint-plugin':
         specifier: ^8.59.3
         version: 8.59.3(@typescript-eslint/parser@8.59.3(eslint@9.39.4)(typescript@5.9.3))(eslint@9.39.4)(typescript@5.9.3)
@@ -567,8 +567,8 @@ packages:
   '@types/react@19.2.14':
     resolution: {integrity: sha512-ilcTH/UniCkMdtexkoCN0bI7pMcJDvmQFPvuPvmEaYA/NSfFTAgdUSLAoVjaRJm7+6PvcM+q1zYOwS4wTYMF9w==}
 
-  '@types/vscode@1.118.0':
-    resolution: {integrity: sha512-Ah6eTlqDcwIMELEVwQMO++rJAFBRz/oLluLD/vWdYrH1KuI9kfpaM+7pg0OvvascgcJy+ghLCERAYouM4QbzGw==}
+  '@types/vscode@1.98.0':
+    resolution: {integrity: sha512-+KuiWhpbKBaG2egF+51KjbGWatTH5BbmWQjSLMDCssb4xF8FJnW4nGH4nuAdOOfMbpD0QlHtI+C3tPq+DoKElg==}
 
   '@typescript-eslint/eslint-plugin@8.59.3':
     resolution: {integrity: sha512-PwFvSKsXGShKGW6n5bZOhGHEcCZXM8HofLK9fNsEwZXzFRjoY+XT1Vsf1zgyXdwTr0ZYz1/2tkZ0DBTT9jZjhw==}
@@ -2193,7 +2193,7 @@ snapshots:
     dependencies:
       csstype: 3.2.3
 
-  '@types/vscode@1.118.0': {}
+  '@types/vscode@1.98.0': {}
 
   '@typescript-eslint/eslint-plugin@8.59.3(@typescript-eslint/parser@8.59.3(eslint@9.39.4)(typescript@5.9.3))(eslint@9.39.4)(typescript@5.9.3)':
     dependencies:
